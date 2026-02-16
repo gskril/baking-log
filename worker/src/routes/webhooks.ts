@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { Env, Webhook } from '../types';
+import { Env, Webhook, Bake, BakeWithDetails, ScheduleEntry, Photo } from '../types';
+import { fireWebhooks } from '../services/webhook';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -38,6 +39,52 @@ app.post('/', async (c) => {
     .first<Webhook>();
 
   return c.json(webhook, 201);
+});
+
+// Manually push webhooks — fires events for recent bakes
+app.post('/push', async (c) => {
+  const body = await c.req.json<{ since?: string }>().catch(() => ({}));
+  const since = body.since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const bakeRows = await c.env.DB.prepare(
+    'SELECT * FROM bakes WHERE updated_at >= ? ORDER BY updated_at DESC'
+  )
+    .bind(since)
+    .all<Bake>();
+
+  const bakes = bakeRows.results ?? [];
+
+  // Build full details for each bake
+  const detailed: BakeWithDetails[] = [];
+  for (const bake of bakes) {
+    const [schedule, photos] = await Promise.all([
+      c.env.DB.prepare(
+        'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
+      )
+        .bind(bake.id)
+        .all<ScheduleEntry>(),
+      c.env.DB.prepare(
+        'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
+      )
+        .bind(bake.id)
+        .all<Photo>(),
+    ]);
+
+    detailed.push({
+      ...bake,
+      schedule: schedule.results ?? [],
+      photos: (photos.results ?? []).map((p) => ({
+        ...p,
+        url: `/api/photos/${p.id}/image`,
+      })),
+    });
+  }
+
+  c.executionCtx.waitUntil(
+    fireWebhooks(c.env, 'bake.updated', { bakes: detailed })
+  );
+
+  return c.json({ ok: true, pushed: bakes.length });
 });
 
 // Delete a webhook

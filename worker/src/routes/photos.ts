@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { Env, Photo } from '../types';
-import { fireWebhooks } from '../services/webhook';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -43,8 +42,6 @@ app.post('/bakes/:bakeId/photos', async (c) => {
     created_at: new Date().toISOString(),
   };
 
-  c.executionCtx.waitUntil(fireWebhooks(c.env, 'photo.uploaded', photo));
-
   return c.json(photo, 201);
 });
 
@@ -80,8 +77,6 @@ app.delete('/photos/:id', async (c) => {
 
   await c.env.PHOTOS.delete(photo.r2_key);
   await c.env.DB.prepare('DELETE FROM photos WHERE id = ?').bind(id).run();
-
-  c.executionCtx.waitUntil(fireWebhooks(c.env, 'photo.deleted', photo));
 
   return c.json({ ok: true });
 });

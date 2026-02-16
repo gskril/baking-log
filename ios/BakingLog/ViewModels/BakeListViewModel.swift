@@ -6,6 +6,8 @@ class BakeListViewModel: ObservableObject {
     @Published var bakes: [Bake] = []
     @Published var isLoading = false
     @Published var error: String?
+    @Published var isPushing = false
+    @Published var pushResult: String?
 
     func load() async {
         isLoading = true
@@ -24,5 +26,17 @@ class BakeListViewModel: ObservableObject {
         for id in ids {
             try? await APIClient.shared.deleteBake(id: id)
         }
+    }
+
+    func pushWebhooks() async {
+        isPushing = true
+        pushResult = nil
+        do {
+            let result = try await APIClient.shared.pushWebhooks()
+            pushResult = "Pushed \(result.pushed) bake\(result.pushed == 1 ? "" : "s")"
+        } catch {
+            pushResult = "Push failed: \(error.localizedDescription)"
+        }
+        isPushing = false
     }
 }

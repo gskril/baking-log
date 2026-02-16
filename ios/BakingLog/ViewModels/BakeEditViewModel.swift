@@ -12,6 +12,7 @@ class BakeEditViewModel: ObservableObject {
     @Published var newImages: [UIImage] = []
     @Published var isSaving = false
     @Published var error: String?
+    @Published var savedOffline = false
 
     private var existingBakeId: String?
 
@@ -72,6 +73,9 @@ class BakeEditViewModel: ObservableObject {
             schedule: schedule.isEmpty ? nil : schedule
         )
 
+        // Convert images to Data on @MainActor (UIImage is not Sendable)
+        let imageDataItems = newImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+
         do {
             let bake: Bake
             if let existingId = existingBakeId {
@@ -80,16 +84,31 @@ class BakeEditViewModel: ObservableObject {
                 bake = try await APIClient.shared.createBake(payload)
             }
 
-            // Upload new photos — convert to Data on @MainActor before
-            // sending across to the APIClient actor (UIImage is not Sendable)
-            for image in newImages {
-                guard let data = image.jpegData(compressionQuality: 0.8) else { continue }
+            for data in imageDataItems {
                 _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
             }
 
             isSaving = false
             return bake
         } catch {
+            // If creating a new bake and offline, queue it locally
+            if existingBakeId == nil {
+                SyncManager.shared.queueBake(payload: payload, imageDataItems: imageDataItems)
+                savedOffline = true
+                isSaving = false
+                // Return a placeholder so the UI dismisses
+                return Bake(
+                    id: "pending",
+                    title: payload.title,
+                    bakeDate: payload.bakeDate,
+                    ingredients: payload.ingredients,
+                    notes: payload.notes,
+                    schedule: nil,
+                    photos: nil,
+                    createdAt: Date.now.ISO8601Format(),
+                    updatedAt: Date.now.ISO8601Format()
+                )
+            }
             self.error = error.localizedDescription
             isSaving = false
             return nil

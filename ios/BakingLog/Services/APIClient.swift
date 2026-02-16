@@ -110,6 +110,21 @@ actor APIClient {
         _ = try await URLSession.shared.data(for: req)
     }
 
+    // MARK: - Webhooks
+
+    struct PushResult: Codable {
+        let ok: Bool
+        let pushed: Int
+    }
+
+    func pushWebhooks(since: Date? = nil) async throws -> PushResult {
+        let sinceISO = (since ?? Date(timeIntervalSinceNow: -86400)).ISO8601Format()
+        let body = try JSONEncoder().encode(["since": sinceISO])
+        let req = request("/api/webhooks/push", method: "POST", body: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try decoder.decode(PushResult.self, from: data)
+    }
+
     /// Build a photo URL synchronously — safe to call from SwiftUI view bodies.
     /// Reads the base URL directly from shared UserDefaults to avoid actor isolation.
     nonisolated func photoURL(for photoId: String) -> URL {

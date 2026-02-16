@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { Env, Bake, BakeWithDetails, ScheduleEntry, Photo, CreateBakeRequest, UpdateBakeRequest } from '../types';
-import { fireWebhooks } from '../services/webhook';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -81,8 +80,6 @@ app.post('/', async (c) => {
     .bind(id)
     .first<Bake>();
 
-  c.executionCtx.waitUntil(fireWebhooks(c.env, 'bake.created', bake));
-
   return c.json(bake, 201);
 });
 
@@ -132,8 +129,6 @@ app.put('/:id', async (c) => {
     .bind(id)
     .first<Bake>();
 
-  c.executionCtx.waitUntil(fireWebhooks(c.env, 'bake.updated', updated));
-
   return c.json(updated);
 });
 
@@ -162,8 +157,6 @@ app.delete('/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM photos WHERE bake_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM bakes WHERE id = ?').bind(id),
   ]);
-
-  c.executionCtx.waitUntil(fireWebhooks(c.env, 'bake.deleted', bake));
 
   return c.json({ ok: true });
 });
