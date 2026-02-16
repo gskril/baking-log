@@ -1,0 +1,16 @@
+name = "baking-log"
+main = "src/index.ts"
+compatibility_date = "2024-06-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "baking-log-db"
+database_id = "" # Fill in after `wrangler d1 create baking-log-db`
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "baking-log-photos"
+
+[vars]
+# Optional: set a shared API key for basic protection
+# API_KEY = "your-secret-key"
