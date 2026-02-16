@@ -1,30 +1,36 @@
 import Foundation
-import UIKit
 
 actor APIClient {
     static let shared = APIClient()
 
-    // Update this to your deployed worker URL
-    private var baseURL: URL {
-        let urlString = UserDefaults.standard.string(forKey: "api_base_url")
-            ?? "http://localhost:8787"
-        return URL(string: urlString)!
+    private static let defaultBaseURL = "http://localhost:8787"
+    private static let baseURLKey = "api_base_url"
+    private static let apiKeyKey = "api_key"
+
+    private var baseURLString: String {
+        let raw = AppGroup.sharedDefaults.string(forKey: Self.baseURLKey) ?? Self.defaultBaseURL
+        // Strip trailing slash to avoid double-slashes when appending paths
+        return raw.hasSuffix("/") ? String(raw.dropLast()) : raw
     }
 
     private var apiKey: String? {
-        UserDefaults.standard.string(forKey: "api_key")
+        let key = AppGroup.sharedDefaults.string(forKey: Self.apiKeyKey)
+        return (key?.isEmpty == true) ? nil : key
     }
 
-    private let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        return d
-    }()
+    private let decoder = JSONDecoder()
 
-    private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String = "application/json") -> URLRequest {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+    private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String? = "application/json") -> URLRequest {
+        guard let url = URL(string: "\(baseURLString)\(path)") else {
+            // Fallback: shouldn't happen with valid settings, but avoids a crash
+            fatalError("Invalid API URL: \(baseURLString)\(path)")
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.httpBody = body
-        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        if let contentType {
+            req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
         if let key = apiKey {
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
@@ -34,14 +40,14 @@ actor APIClient {
     // MARK: - Bakes
 
     func listBakes(limit: Int = 50, offset: Int = 0) async throws -> [Bake] {
-        let req = request("/api/bakes?limit=\(limit)&offset=\(offset)")
+        let req = request("/api/bakes?limit=\(limit)&offset=\(offset)", contentType: nil)
         let (data, _) = try await URLSession.shared.data(for: req)
         let response = try decoder.decode(BakeListResponse.self, from: data)
         return response.bakes
     }
 
     func getBake(id: String) async throws -> Bake {
-        let req = request("/api/bakes/\(id)")
+        let req = request("/api/bakes/\(id)", contentType: nil)
         let (data, _) = try await URLSession.shared.data(for: req)
         return try decoder.decode(Bake.self, from: data)
     }
@@ -61,17 +67,13 @@ actor APIClient {
     }
 
     func deleteBake(id: String) async throws {
-        let req = request("/api/bakes/\(id)", method: "DELETE")
-        let _ = try await URLSession.shared.data(for: req)
+        let req = request("/api/bakes/\(id)", method: "DELETE", contentType: nil)
+        _ = try await URLSession.shared.data(for: req)
     }
 
     // MARK: - Photos
 
-    func uploadPhoto(bakeId: String, image: UIImage, caption: String? = nil) async throws -> Photo {
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw APIError.invalidImage
-        }
-
+    func uploadPhoto(bakeId: String, imageData: Data, caption: String? = nil) async throws -> Photo {
         let boundary = UUID().uuidString
         var body = Data()
 
@@ -83,7 +85,7 @@ actor APIClient {
         body.append("\r\n".data(using: .utf8)!)
 
         // Caption field
-        if let caption = caption {
+        if let caption {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".data(using: .utf8)!)
             body.append(caption.data(using: .utf8)!)
@@ -92,20 +94,28 @@ actor APIClient {
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        var req = request("/api/bakes/\(bakeId)/photos", method: "POST", body: body, contentType: "multipart/form-data; boundary=\(boundary)")
-        req.httpBody = body
+        let req = request(
+            "/api/bakes/\(bakeId)/photos",
+            method: "POST",
+            body: body,
+            contentType: "multipart/form-data; boundary=\(boundary)"
+        )
 
         let (data, _) = try await URLSession.shared.data(for: req)
         return try decoder.decode(Photo.self, from: data)
     }
 
     func deletePhoto(id: String) async throws {
-        let req = request("/api/photos/\(id)", method: "DELETE")
-        let _ = try await URLSession.shared.data(for: req)
+        let req = request("/api/photos/\(id)", method: "DELETE", contentType: nil)
+        _ = try await URLSession.shared.data(for: req)
     }
 
-    func photoURL(for photoId: String) -> URL {
-        baseURL.appendingPathComponent("/api/photos/\(photoId)/image")
+    /// Build a photo URL synchronously — safe to call from SwiftUI view bodies.
+    /// Reads the base URL directly from shared UserDefaults to avoid actor isolation.
+    nonisolated func photoURL(for photoId: String) -> URL {
+        let raw = AppGroup.sharedDefaults.string(forKey: Self.baseURLKey) ?? Self.defaultBaseURL
+        let base = raw.hasSuffix("/") ? String(raw.dropLast()) : raw
+        return URL(string: "\(base)/api/photos/\(photoId)/image")!
     }
 }
 
@@ -132,14 +142,4 @@ struct ScheduleEntryPayload: Codable {
 
 struct BakeListResponse: Codable {
     let bakes: [Bake]
-}
-
-enum APIError: LocalizedError {
-    case invalidImage
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidImage: return "Could not process image"
-        }
-    }
 }

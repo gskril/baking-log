@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import PhotosUI
 
 @MainActor
 class BakeEditViewModel: ObservableObject {
@@ -81,9 +80,11 @@ class BakeEditViewModel: ObservableObject {
                 bake = try await APIClient.shared.createBake(payload)
             }
 
-            // Upload new photos
+            // Upload new photos — convert to Data on @MainActor before
+            // sending across to the APIClient actor (UIImage is not Sendable)
             for image in newImages {
-                _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, image: image)
+                guard let data = image.jpegData(compressionQuality: 0.8) else { continue }
+                _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
             }
 
             isSaving = false

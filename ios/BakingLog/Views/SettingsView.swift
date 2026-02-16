@@ -1,8 +1,11 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("api_base_url") private var apiBaseURL = "http://localhost:8787"
-    @AppStorage("api_key") private var apiKey = ""
+    @AppStorage("api_base_url", store: AppGroup.sharedDefaults)
+    private var apiBaseURL = "http://localhost:8787"
+
+    @AppStorage("api_key", store: AppGroup.sharedDefaults)
+    private var apiKey = ""
 
     var body: some View {
         Form {

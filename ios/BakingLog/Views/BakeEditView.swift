@@ -157,6 +157,7 @@ struct BakeEditView: View {
     }
 
     private func loadPhotos() async {
+        guard !selectedPhotos.isEmpty else { return }
         for item in selectedPhotos {
             if let data = try? await item.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
@@ -181,11 +182,9 @@ struct ScheduleEntryRow: View {
                     .textInputAutocapitalization(.words)
             }
 
-            if !entry.note.isEmpty || entry.action.lowercased().contains("shape") {
-                TextField("Note (optional)", text: $entry.note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            TextField("Note (optional)", text: $entry.note)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

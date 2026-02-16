@@ -156,7 +156,12 @@ app.delete('/:id', async (c) => {
     await c.env.PHOTOS.delete(photo.r2_key);
   }
 
-  await c.env.DB.prepare('DELETE FROM bakes WHERE id = ?').bind(id).run();
+  // Explicit deletes — don't rely on CASCADE since D1 may not enforce foreign keys
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM schedule_entries WHERE bake_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM photos WHERE bake_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM bakes WHERE id = ?').bind(id),
+  ]);
 
   c.executionCtx.waitUntil(fireWebhooks(c.env, 'bake.deleted', bake));
 
