@@ -18,10 +18,20 @@ class BakeEditViewModel: ObservableObject {
     private var existingBakeId: String?
     private var pendingBakeId: String?
 
+    enum IngredientUnit: String, CaseIterable, Identifiable {
+        case grams = "g"
+        case tsp = "tsp"
+        case tbsp = "tbsp"
+        case cup = "cup"
+
+        var id: String { rawValue }
+    }
+
     struct EditableIngredient: Identifiable {
         let id = UUID()
         var name: String
-        var amount: String
+        var amountValue: String
+        var unit: IngredientUnit
         var note: String
     }
 
@@ -75,13 +85,14 @@ class BakeEditViewModel: ObservableObject {
         // Load structured ingredients if available, fall back to text
         if let structured = bake.ingredients, !structured.isEmpty {
             ingredientEntries = structured.map {
-                EditableIngredient(name: $0.name, amount: $0.amount, note: $0.note ?? "")
+                let parsed = Self.parseAmount($0.amount)
+                return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
             }
         } else if let text = bake.ingredientsText, !text.isEmpty {
             // Parse legacy text: each line becomes an ingredient with the full line as "name"
             ingredientEntries = text.components(separatedBy: "\n")
                 .filter { !$0.isEmpty }
-                .map { EditableIngredient(name: $0, amount: "", note: "") }
+                .map { EditableIngredient(name: $0, amountValue: "", unit: .grams, note: "") }
         }
 
         scheduleEntries = (bake.schedule ?? []).map {
@@ -100,7 +111,8 @@ class BakeEditViewModel: ObservableObject {
 
         if let ingredients = pending.payload.ingredients, !ingredients.isEmpty {
             ingredientEntries = ingredients.map {
-                EditableIngredient(name: $0.name, amount: $0.amount, note: $0.note ?? "")
+                let parsed = Self.parseAmount($0.amount)
+                return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
             }
         }
 
@@ -116,7 +128,7 @@ class BakeEditViewModel: ObservableObject {
     // MARK: - Ingredient CRUD
 
     func addIngredient() {
-        ingredientEntries.append(EditableIngredient(name: "", amount: "", note: ""))
+        ingredientEntries.append(EditableIngredient(name: "", amountValue: "", unit: .grams, note: ""))
     }
 
     func removeIngredient(at offsets: IndexSet) {
@@ -155,8 +167,14 @@ class BakeEditViewModel: ObservableObject {
             .map { ScheduleEntryPayload(time: Self.formatTime($0.timeDate), action: $0.action, note: $0.note.isEmpty ? nil : $0.note) }
 
         let ingredients = ingredientEntries
-            .filter { !$0.name.isEmpty || !$0.amount.isEmpty }
-            .map { IngredientPayload(name: $0.name, amount: $0.amount, note: $0.note.isEmpty ? nil : $0.note) }
+            .filter { !$0.name.isEmpty || !$0.amountValue.isEmpty }
+            .map {
+                IngredientPayload(
+                    name: $0.name,
+                    amount: Self.formatAmount(value: $0.amountValue, unit: $0.unit),
+                    note: $0.note.isEmpty ? nil : $0.note
+                )
+            }
 
         let payload = CreateBakePayload(
             title: title,
@@ -234,5 +252,57 @@ class BakeEditViewModel: ObservableObject {
     func deleteExistingPhoto(_ photo: Photo) async {
         try? await APIClient.shared.deletePhoto(id: photo.id)
         existingPhotos.removeAll { $0.id == photo.id }
+    }
+
+    // MARK: - Ingredient Amount Helpers
+
+    private static func parseAmount(_ rawAmount: String) -> (value: String, unit: IngredientUnit) {
+        let trimmed = rawAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ("", .grams)
+        }
+
+        let lower = trimmed.lowercased()
+
+        if let match = lower.range(of: #"^(\d+(?:\.\d+)?)\s*(g|gram|grams|tsp|tbsp|cup|cups)$"#, options: .regularExpression) {
+            let matched = String(lower[match])
+            let parts = matched.split(whereSeparator: \.isWhitespace)
+            if parts.count == 1 {
+                // Handles values like "90g" where unit is attached to the number.
+                let attached = String(parts[0])
+                if let numberRange = attached.range(of: #"^\d+(?:\.\d+)?"#, options: .regularExpression) {
+                    let number = String(attached[numberRange])
+                    let unitToken = attached.replacingOccurrences(of: #"^\d+(?:\.\d+)?"#, with: "", options: .regularExpression)
+                    switch unitToken {
+                    case "tsp": return (number, .tsp)
+                    case "tbsp": return (number, .tbsp)
+                    case "cup", "cups": return (number, .cup)
+                    default: return (number, .grams)
+                    }
+                }
+            } else if parts.count == 2 {
+                let number = String(parts[0])
+                let unitToken = String(parts[1])
+                switch unitToken {
+                case "tsp": return (number, .tsp)
+                case "tbsp": return (number, .tbsp)
+                case "cup", "cups": return (number, .cup)
+                default: return (number, .grams)
+                }
+            }
+        }
+
+        if lower.range(of: #"^\d+(?:\.\d+)?$"#, options: .regularExpression) != nil {
+            return (trimmed, .grams)
+        }
+
+        // Unknown format: preserve text and default unit to grams.
+        return (trimmed, .grams)
+    }
+
+    private static func formatAmount(value rawValue: String, unit: IngredientUnit) -> String {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        return "\(value) \(unit.rawValue)"
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct PendingBakeDetailView: View {
     let pendingId: String
@@ -8,6 +9,10 @@ struct PendingBakeDetailView: View {
     @State private var newStepTime: Date = .now
     @State private var newStepAction: String = ""
     @State private var newStepNote: String = ""
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isAddingPhotos = false
+    @State private var editedNotes: String = ""
+    @FocusState private var isNewStepActionFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private var pending: SyncManager.PendingBake? {
@@ -19,10 +24,8 @@ struct PendingBakeDetailView: View {
             if let pending {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        // Local photos
-                        if !pending.imageDataItems.isEmpty {
-                            localPhotosSection(pending.imageDataItems)
-                        }
+                        // Photos
+                        photosSection(pending)
 
                         // Ingredients
                         ingredientsSection(pending.payload)
@@ -31,12 +34,7 @@ struct PendingBakeDetailView: View {
                         scheduleSection(pending)
 
                         // Notes
-                        if let notes = pending.payload.notes, !notes.isEmpty {
-                            SectionBlock(title: "Notes") {
-                                Text(notes)
-                                    .font(.body)
-                            }
-                        }
+                        notesSection(pending)
                     }
                     .padding()
                 }
@@ -66,25 +64,60 @@ struct PendingBakeDetailView: View {
                 }
             }
         }
+        .onAppear {
+            editedNotes = pending?.payload.notes ?? ""
+        }
+        .onChange(of: pending?.id) {
+            editedNotes = pending?.payload.notes ?? ""
+        }
+        .onChange(of: selectedPhotos) {
+            Task { await addSelectedPhotosToPending() }
+        }
     }
 
-    // MARK: - Local Photos
+    // MARK: - Photos
 
     @ViewBuilder
-    private func localPhotosSection(_ imageDataItems: [Data]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(imageDataItems.indices, id: \.self) { i in
-                    if let uiImage = UIImage(data: imageDataItems[i]) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 280, height: 210)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+    private func photosSection(_ pending: SyncManager.PendingBake) -> some View {
+        SectionBlock(title: "Photos") {
+            if !pending.imageDataItems.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(pending.imageDataItems.indices, id: \.self) { i in
+                            if let uiImage = UIImage(data: pending.imageDataItems[i]) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 280, height: 210)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
                     }
                 }
+                .padding(.horizontal, 1)
+            } else {
+                Text("No photos yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 1)
+
+            PhotosPicker(
+                selection: $selectedPhotos,
+                maxSelectionCount: 10,
+                matching: .images
+            ) {
+                Label("Add Photos", systemImage: "photo.on.rectangle.angled")
+            }
+            .disabled(isAddingPhotos)
+
+            if isAddingPhotos {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Adding photos...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -146,11 +179,48 @@ struct PendingBakeDetailView: View {
             } else {
                 Button {
                     showingAddStep = true
+                    DispatchQueue.main.async {
+                        isNewStepActionFocused = true
+                    }
                 } label: {
                     Label("Add Step", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
                 .padding(.top, 4)
+            }
+        }
+    }
+
+    // MARK: - Notes
+
+    @ViewBuilder
+    private func notesSection(_ pending: SyncManager.PendingBake) -> some View {
+        let currentNotes = pending.payload.notes ?? ""
+        let notesChanged = editedNotes != currentNotes
+
+        SectionBlock(title: "Notes") {
+            TextEditor(text: $editedNotes)
+                .frame(minHeight: 100)
+                .padding(4)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.quaternary)
+                }
+
+            HStack {
+                Button("Reset") {
+                    editedNotes = currentNotes
+                }
+                .foregroundStyle(.secondary)
+                .disabled(!notesChanged)
+
+                Spacer()
+
+                Button("Save Notes") {
+                    saveNotesToPending()
+                }
+                .bold()
+                .disabled(!notesChanged)
             }
         }
     }
@@ -168,6 +238,7 @@ struct PendingBakeDetailView: View {
                     .frame(width: 100)
 
                 TextField("Action", text: $newStepAction)
+                    .focused($isNewStepActionFocused)
                     .textInputAutocapitalization(.words)
                     .textFieldStyle(.roundedBorder)
             }
@@ -229,8 +300,56 @@ struct PendingBakeDetailView: View {
 
     private func resetAddStep() {
         showingAddStep = false
+        isNewStepActionFocused = false
         newStepTime = .now
         newStepAction = ""
         newStepNote = ""
+    }
+
+    private func addSelectedPhotosToPending() async {
+        guard !selectedPhotos.isEmpty else { return }
+        guard let pending else {
+            selectedPhotos.removeAll()
+            return
+        }
+
+        isAddingPhotos = true
+        defer {
+            isAddingPhotos = false
+            selectedPhotos.removeAll()
+        }
+
+        var updatedImages = pending.imageDataItems
+        for item in selectedPhotos {
+            if let data = try? await item.loadTransferable(type: Data.self) {
+                updatedImages.append(data)
+            }
+        }
+
+        syncManager.updatePending(
+            id: pending.id,
+            payload: pending.payload,
+            imageDataItems: updatedImages
+        )
+    }
+
+    private func saveNotesToPending() {
+        guard let pending else { return }
+
+        let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let updatedPayload = CreateBakePayload(
+            title: pending.payload.title,
+            bakeDate: pending.payload.bakeDate,
+            ingredientsText: pending.payload.ingredientsText,
+            ingredients: pending.payload.ingredients,
+            notes: trimmed.isEmpty ? nil : editedNotes,
+            schedule: pending.payload.schedule
+        )
+
+        syncManager.updatePending(
+            id: pending.id,
+            payload: updatedPayload,
+            imageDataItems: pending.imageDataItems
+        )
     }
 }

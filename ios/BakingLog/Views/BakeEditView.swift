@@ -4,10 +4,17 @@ import PhotosUI
 struct BakeEditView: View {
     @StateObject private var vm = BakeEditViewModel()
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var pendingIngredientFocusId: UUID?
+    @FocusState private var focusedIngredientField: IngredientField?
     let existing: Bake?
     let existingPending: SyncManager.PendingBake?
     let onDismiss: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    enum IngredientField: Hashable {
+        case name(UUID)
+        case amount(UUID)
+    }
 
     init(existing: Bake? = nil, onDismiss: @escaping () -> Void) {
         self.existing = existing
@@ -29,19 +36,23 @@ struct BakeEditView: View {
                     TextField("Title", text: $vm.title)
                         .textInputAutocapitalization(.words)
 
-                    DatePicker("Date", selection: $vm.bakeDate, displayedComponents: .date)
+                    DatePicker("Start Date", selection: $vm.bakeDate, displayedComponents: .date)
                 }
 
                 // Ingredients
                 Section {
                     ForEach($vm.ingredientEntries) { $entry in
-                        IngredientEntryRow(entry: $entry)
+                        IngredientEntryRow(
+                            entry: $entry,
+                            focusedField: $focusedIngredientField
+                        )
                     }
                     .onDelete(perform: vm.removeIngredient)
                     .onMove(perform: vm.moveIngredient)
 
                     Button {
                         vm.addIngredient()
+                        pendingIngredientFocusId = vm.ingredientEntries.last?.id
                     } label: {
                         Label("Add Ingredient", systemImage: "plus.circle")
                     }
@@ -199,12 +210,11 @@ struct BakeEditView: View {
                     vm.loadExistingPending(existingPending)
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
+            .onChange(of: vm.ingredientEntries.count) {
+                guard let id = pendingIngredientFocusId else { return }
+                pendingIngredientFocusId = nil
+                DispatchQueue.main.async {
+                    focusedIngredientField = .name(id)
                 }
             }
             .interactiveDismissDisabled(vm.isSaving)
@@ -225,17 +235,34 @@ struct BakeEditView: View {
 
 struct IngredientEntryRow: View {
     @Binding var entry: BakeEditViewModel.EditableIngredient
+    var focusedField: FocusState<BakeEditView.IngredientField?>.Binding
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 TextField("Name", text: $entry.name)
+                    .focused(focusedField, equals: .name(entry.id))
                     .textInputAutocapitalization(.words)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField.wrappedValue = .amount(entry.id)
+                    }
 
-                TextField("Amount", text: $entry.amount)
-                    .frame(width: 80)
+                TextField("Amount", text: $entry.amountValue)
+                    .focused(focusedField, equals: .amount(entry.id))
+                    .frame(width: 72)
+                    .keyboardType(.decimalPad)
                     .textInputAutocapitalization(.never)
+                    .submitLabel(.done)
                     .multilineTextAlignment(.trailing)
+
+                Picker("Unit", selection: $entry.unit) {
+                    ForEach(BakeEditViewModel.IngredientUnit.allCases) { unit in
+                        Text(unit.rawValue).tag(unit)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
             }
 
             if !entry.note.isEmpty || entry.name.isEmpty {

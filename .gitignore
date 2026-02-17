@@ -9,6 +9,9 @@ dist/
 xcuserdata/
 DerivedData/
 build/
+ios/.build/
+ios/DerivedData/
+ios/build/
 *.ipa
 *.dSYM.zip
 *.dSYM

@@ -2,6 +2,13 @@ import SwiftUI
 
 struct CalculatorView: View {
     @StateObject private var vm = CalculatorViewModel()
+    @FocusState private var focusedField: IngredientField?
+    @State private var pendingIngredientFocusId: UUID?
+
+    enum IngredientField: Hashable {
+        case name(UUID)
+        case weight(UUID)
+    }
 
     var body: some View {
         Form {
@@ -20,7 +27,8 @@ struct CalculatorView: View {
                 ForEach($vm.ingredients) { $ingredient in
                     IngredientRow(
                         ingredient: $ingredient,
-                        percentage: vm.bakersPercentage(for: ingredient)
+                        percentage: vm.bakersPercentage(for: ingredient),
+                        focusedField: $focusedField
                     )
                 }
                 .onDelete(perform: vm.removeIngredients)
@@ -28,6 +36,7 @@ struct CalculatorView: View {
 
                 Button {
                     vm.addIngredient()
+                    pendingIngredientFocusId = vm.ingredients.last?.id
                 } label: {
                     Label("Add Ingredient", systemImage: "plus.circle")
                 }
@@ -71,15 +80,16 @@ struct CalculatorView: View {
             }
         }
         .navigationTitle("Calculator")
+        .onChange(of: vm.ingredients.count) {
+            guard let id = pendingIngredientFocusId else { return }
+            pendingIngredientFocusId = nil
+            DispatchQueue.main.async {
+                focusedField = .name(id)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 EditButton()
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
             }
         }
     }
@@ -104,12 +114,18 @@ struct StatBadge: View {
 struct IngredientRow: View {
     @Binding var ingredient: CalculatorViewModel.Ingredient
     let percentage: Double
+    var focusedField: FocusState<CalculatorView.IngredientField?>.Binding
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 TextField("Name", text: $ingredient.name)
+                    .focused(focusedField, equals: .name(ingredient.id))
                     .textInputAutocapitalization(.words)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField.wrappedValue = .weight(ingredient.id)
+                    }
 
                 Picker("", selection: $ingredient.role) {
                     ForEach(CalculatorViewModel.Ingredient.Role.allCases, id: \.self) { role in
@@ -123,6 +139,7 @@ struct IngredientRow: View {
 
             HStack {
                 TextField("0", text: $ingredient.weight)
+                    .focused(focusedField, equals: .weight(ingredient.id))
                     .keyboardType(.decimalPad)
                     .font(.body.monospacedDigit())
 

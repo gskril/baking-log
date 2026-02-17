@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct BakeDetailView: View {
     let bakeId: String
@@ -10,6 +11,11 @@ struct BakeDetailView: View {
     @State private var newStepAction: String = ""
     @State private var newStepNote: String = ""
     @State private var isSavingStep = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isUploadingPhotos = false
+    @State private var editedNotes: String = ""
+    @State private var isSavingNotes = false
+    @FocusState private var isNewStepActionFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -20,9 +26,7 @@ struct BakeDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         // Photos
-                        if let photos = bake.photos, !photos.isEmpty {
-                            PhotoCarousel(photos: photos)
-                        }
+                        photosSection(bake: bake)
 
                         // Ingredients
                         ingredientsSection(bake: bake)
@@ -31,12 +35,7 @@ struct BakeDetailView: View {
                         scheduleSection(bake: bake)
 
                         // Notes
-                        if let notes = bake.notes, !notes.isEmpty {
-                            SectionBlock(title: "Notes") {
-                                Text(notes)
-                                    .font(.body)
-                            }
-                        }
+                        notesSection(bake: bake)
                     }
                     .padding()
                 }
@@ -61,6 +60,42 @@ struct BakeDetailView: View {
         }
         .task {
             await load()
+        }
+        .onChange(of: selectedPhotos) {
+            Task { await uploadSelectedPhotos() }
+        }
+    }
+
+    // MARK: - Photos Section
+
+    @ViewBuilder
+    private func photosSection(bake: Bake) -> some View {
+        SectionBlock(title: "Photos") {
+            if let photos = bake.photos, !photos.isEmpty {
+                PhotoCarousel(photos: photos)
+            } else {
+                Text("No photos yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            PhotosPicker(
+                selection: $selectedPhotos,
+                maxSelectionCount: 10,
+                matching: .images
+            ) {
+                Label("Add Photos", systemImage: "photo.on.rectangle.angled")
+            }
+            .disabled(isUploadingPhotos)
+
+            if isUploadingPhotos {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Uploading photos...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -127,11 +162,53 @@ struct BakeDetailView: View {
             } else {
                 Button {
                     showingAddStep = true
+                    DispatchQueue.main.async {
+                        isNewStepActionFocused = true
+                    }
                 } label: {
                     Label("Add Step", systemImage: "plus.circle")
                         .font(.subheadline)
                 }
                 .padding(.top, 4)
+            }
+        }
+    }
+
+    // MARK: - Notes Section
+
+    @ViewBuilder
+    private func notesSection(bake: Bake) -> some View {
+        let currentNotes = bake.notes ?? ""
+        let notesChanged = editedNotes != currentNotes
+
+        SectionBlock(title: "Notes") {
+            TextEditor(text: $editedNotes)
+                .frame(minHeight: 100)
+                .padding(4)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.quaternary)
+                }
+
+            HStack {
+                Button("Reset") {
+                    editedNotes = currentNotes
+                }
+                .foregroundStyle(.secondary)
+                .disabled(!notesChanged || isSavingNotes)
+
+                Spacer()
+
+                Button {
+                    Task { await saveNotes() }
+                } label: {
+                    if isSavingNotes {
+                        ProgressView()
+                    } else {
+                        Text("Save Notes").bold()
+                    }
+                }
+                .disabled(!notesChanged || isSavingNotes)
             }
         }
     }
@@ -149,6 +226,7 @@ struct BakeDetailView: View {
                     .frame(width: 100)
 
                 TextField("Action", text: $newStepAction)
+                    .focused($isNewStepActionFocused)
                     .textInputAutocapitalization(.words)
                     .textFieldStyle(.roundedBorder)
             }
@@ -199,19 +277,8 @@ struct BakeDetailView: View {
             )
         )
 
-        // Build ingredients payload to preserve them
-        let ingredientsPayload = bake.ingredients?.map {
-            IngredientPayload(name: $0.name, amount: $0.amount, note: $0.note)
-        }
-
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-
-        let payload = CreateBakePayload(
-            title: bake.title,
-            bakeDate: bake.bakeDate,
-            ingredientsText: bake.ingredientsText,
-            ingredients: ingredientsPayload,
+        let payload = buildPayload(
+            from: bake,
             notes: bake.notes,
             schedule: schedulePayload
         )
@@ -222,8 +289,70 @@ struct BakeDetailView: View {
         await load()
     }
 
+    private func saveNotes() async {
+        guard let bake else { return }
+        isSavingNotes = true
+
+        let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteValue = trimmed.isEmpty ? nil : editedNotes
+        let existingSchedule = (bake.schedule ?? []).map {
+            ScheduleEntryPayload(time: $0.time, action: $0.action, note: $0.note)
+        }
+
+        let payload = buildPayload(
+            from: bake,
+            notes: noteValue,
+            schedule: existingSchedule.isEmpty ? nil : existingSchedule
+        )
+
+        if let updated = try? await APIClient.shared.updateBake(id: bake.id, payload) {
+            self.bake = updated
+            editedNotes = updated.notes ?? ""
+        }
+
+        isSavingNotes = false
+    }
+
+    private func uploadSelectedPhotos() async {
+        guard !selectedPhotos.isEmpty else { return }
+        guard let bake else {
+            selectedPhotos.removeAll()
+            return
+        }
+
+        isUploadingPhotos = true
+        defer {
+            isUploadingPhotos = false
+            selectedPhotos.removeAll()
+        }
+
+        for item in selectedPhotos {
+            if let data = try? await item.loadTransferable(type: Data.self) {
+                _ = try? await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+            }
+        }
+
+        await load()
+    }
+
+    private func buildPayload(from bake: Bake, notes: String?, schedule: [ScheduleEntryPayload]?) -> CreateBakePayload {
+        let ingredientsPayload = bake.ingredients?.map {
+            IngredientPayload(name: $0.name, amount: $0.amount, note: $0.note)
+        }
+
+        return CreateBakePayload(
+            title: bake.title,
+            bakeDate: bake.bakeDate,
+            ingredientsText: bake.ingredientsText,
+            ingredients: ingredientsPayload,
+            notes: notes,
+            schedule: schedule
+        )
+    }
+
     private func resetAddStep() {
         showingAddStep = false
+        isNewStepActionFocused = false
         newStepTime = .now
         newStepAction = ""
         newStepNote = ""
@@ -232,6 +361,7 @@ struct BakeDetailView: View {
     private func load() async {
         isLoading = true
         bake = try? await APIClient.shared.getBake(id: bakeId)
+        editedNotes = bake?.notes ?? ""
         isLoading = false
     }
 }
