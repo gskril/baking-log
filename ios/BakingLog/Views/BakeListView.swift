@@ -31,23 +31,27 @@ struct BakeListView: View {
                     if !syncManager.pendingBakes.isEmpty {
                         Section {
                             ForEach(syncManager.pendingBakes) { pending in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(pending.payload.title)
-                                            .font(.headline)
-                                        Text(pending.displayDate)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
+                                NavigationLink {
+                                    PendingBakeDetailView(pendingId: pending.id)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(pending.payload.title)
+                                                .font(.headline)
+                                            Text(pending.displayDate)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if syncManager.isSyncing {
+                                            ProgressView()
+                                        } else {
+                                            Image(systemName: "arrow.triangle.2.circlepath")
+                                                .foregroundStyle(.orange)
+                                        }
                                     }
-                                    Spacer()
-                                    if syncManager.isSyncing {
-                                        ProgressView()
-                                    } else {
-                                        Image(systemName: "arrow.triangle.2.circlepath")
-                                            .foregroundStyle(.orange)
-                                    }
+                                    .padding(.vertical, 2)
                                 }
-                                .padding(.vertical, 2)
                             }
                             .onDelete { offsets in
                                 for i in offsets {

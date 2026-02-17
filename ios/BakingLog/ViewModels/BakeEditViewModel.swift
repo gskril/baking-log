@@ -9,12 +9,14 @@ class BakeEditViewModel: ObservableObject {
     @Published var notes: String = ""
     @Published var scheduleEntries: [EditableScheduleEntry] = []
     @Published var existingPhotos: [Photo] = []
+    @Published var pendingExistingImages: [Data] = []
     @Published var newImages: [UIImage] = []
     @Published var isSaving = false
     @Published var error: String?
     @Published var savedOffline = false
 
     private var existingBakeId: String?
+    private var pendingBakeId: String?
 
     struct EditableIngredient: Identifiable {
         let id = UUID()
@@ -30,7 +32,7 @@ class BakeEditViewModel: ObservableObject {
         var note: String
     }
 
-    var isEditing: Bool { existingBakeId != nil }
+    var isEditing: Bool { existingBakeId != nil || pendingBakeId != nil }
 
     // MARK: - Time Formatting
 
@@ -85,6 +87,30 @@ class BakeEditViewModel: ObservableObject {
         scheduleEntries = (bake.schedule ?? []).map {
             EditableScheduleEntry(timeDate: Self.parseTime($0.time), action: $0.action, note: $0.note ?? "")
         }
+    }
+
+    func loadExistingPending(_ pending: SyncManager.PendingBake) {
+        pendingBakeId = pending.id
+        title = pending.payload.title
+        notes = pending.payload.notes ?? ""
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        bakeDate = formatter.date(from: pending.payload.bakeDate) ?? .now
+
+        if let ingredients = pending.payload.ingredients, !ingredients.isEmpty {
+            ingredientEntries = ingredients.map {
+                EditableIngredient(name: $0.name, amount: $0.amount, note: $0.note ?? "")
+            }
+        }
+
+        if let schedule = pending.payload.schedule, !schedule.isEmpty {
+            scheduleEntries = schedule.map {
+                EditableScheduleEntry(timeDate: Self.parseTime($0.time), action: $0.action, note: $0.note ?? "")
+            }
+        }
+
+        pendingExistingImages = pending.imageDataItems
     }
 
     // MARK: - Ingredient CRUD
@@ -142,7 +168,27 @@ class BakeEditViewModel: ObservableObject {
         )
 
         // Convert images to Data on @MainActor (UIImage is not Sendable)
-        let imageDataItems = newImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        let newImageData = newImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+
+        // If editing a pending bake, update locally — no API call
+        if let pendingId = pendingBakeId {
+            let allImageData = pendingExistingImages + newImageData
+            SyncManager.shared.updatePending(id: pendingId, payload: payload, imageDataItems: allImageData)
+            isSaving = false
+            return Bake(
+                id: "pending",
+                title: payload.title,
+                bakeDate: payload.bakeDate,
+                ingredientsText: nil,
+                ingredients: nil,
+                ingredientCount: nil,
+                notes: payload.notes,
+                schedule: nil,
+                photos: nil,
+                createdAt: Date.now.ISO8601Format(),
+                updatedAt: Date.now.ISO8601Format()
+            )
+        }
 
         do {
             let bake: Bake
@@ -152,7 +198,7 @@ class BakeEditViewModel: ObservableObject {
                 bake = try await APIClient.shared.createBake(payload)
             }
 
-            for data in imageDataItems {
+            for data in newImageData {
                 _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
             }
 
@@ -161,7 +207,7 @@ class BakeEditViewModel: ObservableObject {
         } catch {
             // If creating a new bake and offline, queue it locally
             if existingBakeId == nil {
-                SyncManager.shared.queueBake(payload: payload, imageDataItems: imageDataItems)
+                SyncManager.shared.queueBake(payload: payload, imageDataItems: newImageData)
                 savedOffline = true
                 isSaving = false
                 // Return a placeholder so the UI dismisses
