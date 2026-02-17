@@ -5,11 +5,19 @@ struct BakeEditView: View {
     @StateObject private var vm = BakeEditViewModel()
     @State private var selectedPhotos: [PhotosPickerItem] = []
     let existing: Bake?
+    let existingPending: SyncManager.PendingBake?
     let onDismiss: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     init(existing: Bake? = nil, onDismiss: @escaping () -> Void) {
         self.existing = existing
+        self.existingPending = nil
+        self.onDismiss = onDismiss
+    }
+
+    init(existingPending: SyncManager.PendingBake, onDismiss: @escaping () -> Void) {
+        self.existing = nil
+        self.existingPending = existingPending
         self.onDismiss = onDismiss
     }
 
@@ -60,7 +68,34 @@ struct BakeEditView: View {
 
                 // Photos
                 Section("Photos") {
-                    // Existing photos
+                    // Pending local photos (from offline queue)
+                    if !vm.pendingExistingImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(vm.pendingExistingImages.indices, id: \.self) { i in
+                                    if let uiImage = UIImage(data: vm.pendingExistingImages[i]) {
+                                        Image(uiImage: uiImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .overlay(alignment: .topTrailing) {
+                                                Button {
+                                                    vm.pendingExistingImages.remove(at: i)
+                                                } label: {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.red)
+                                                }
+                                                .offset(x: 4, y: -4)
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Existing server photos
                     if !vm.existingPhotos.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -160,6 +195,8 @@ struct BakeEditView: View {
             .onAppear {
                 if let existing {
                     vm.loadExisting(existing)
+                } else if let existingPending {
+                    vm.loadExistingPending(existingPending)
                 }
             }
             .toolbar {

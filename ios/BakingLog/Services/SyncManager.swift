@@ -15,8 +15,8 @@ class SyncManager: ObservableObject {
 
     struct PendingBake: Identifiable, Codable {
         let id: String
-        let payload: CreateBakePayload
-        let imageDataItems: [Data]
+        var payload: CreateBakePayload
+        var imageDataItems: [Data]
         let createdLocally: Date
 
         var displayDate: String {
@@ -87,6 +87,13 @@ class SyncManager: ObservableObject {
 
     func removePending(id: String) {
         pendingBakes.removeAll { $0.id == id }
+        savePending()
+    }
+
+    func updatePending(id: String, payload: CreateBakePayload, imageDataItems: [Data]) {
+        guard let index = pendingBakes.firstIndex(where: { $0.id == id }) else { return }
+        pendingBakes[index].payload = payload
+        pendingBakes[index].imageDataItems = imageDataItems
         savePending()
     }
 
