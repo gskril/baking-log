@@ -4,12 +4,15 @@ compatibility_date = "2025-09-23"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "baking-log-db"
-database_id = "" # Fill in after `wrangler d1 create baking-log-db`
+database_name = "baking-log"
+database_id = "7b0cebe8-ac37-482d-acca-e2a9ffd13961"
 
 [[r2_buckets]]
 binding = "PHOTOS"
-bucket_name = "baking-log-photos"
+bucket_name = "baking-log"
+
+[observability]
+enabled = false
 
 [vars]
 # Optional: set a shared API key for basic protection

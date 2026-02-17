@@ -16,8 +16,8 @@ cd worker
 npm install
 
 # Create D1 database and R2 bucket
-wrangler d1 create baking-log-db
-wrangler r2 bucket create baking-log-photos
+wrangler d1 create baking-log
+wrangler r2 bucket create baking-log
 
 # Update wrangler.toml with the database_id from the d1 create output
 
