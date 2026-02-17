@@ -163,6 +163,23 @@ struct BakeListView: View {
 struct BakeRow: View {
     let bake: Bake
 
+    private var ingredientCountText: String? {
+        // Prefer structured ingredient count from list endpoint
+        if let count = bake.ingredientCount, count > 0 {
+            return "\(count) ingredient\(count == 1 ? "" : "s")"
+        }
+        // Fallback: count from structured array (detail endpoint)
+        if let ingredients = bake.ingredients, !ingredients.isEmpty {
+            return "\(ingredients.count) ingredient\(ingredients.count == 1 ? "" : "s")"
+        }
+        // Fallback: count lines from legacy text
+        if let text = bake.ingredientsText, !text.isEmpty {
+            let count = text.components(separatedBy: "\n").filter { !$0.isEmpty }.count
+            return "\(count) ingredient\(count == 1 ? "" : "s")"
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(bake.title)
@@ -170,9 +187,8 @@ struct BakeRow: View {
             Text(bake.displayDate)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if let ingredients = bake.ingredients, !ingredients.isEmpty {
-                let count = ingredients.components(separatedBy: "\n").count
-                Text("\(count) ingredient\(count == 1 ? "" : "s")")
+            if let text = ingredientCountText {
+                Text(text)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }

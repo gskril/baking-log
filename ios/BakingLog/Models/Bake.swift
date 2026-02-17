@@ -4,7 +4,9 @@ struct Bake: Identifiable, Codable, Hashable {
     let id: String
     var title: String
     var bakeDate: String
-    var ingredients: String?
+    var ingredientsText: String?
+    var ingredients: [Ingredient]?
+    var ingredientCount: Int?
     var notes: String?
     var schedule: [ScheduleEntry]?
     var photos: [Photo]?
@@ -14,6 +16,8 @@ struct Bake: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, title, ingredients, notes, schedule, photos
         case bakeDate = "bake_date"
+        case ingredientsText = "ingredients_text"
+        case ingredientCount = "ingredient_count"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -34,7 +38,16 @@ struct Bake: Identifiable, Codable, Hashable {
         id: "preview-1",
         title: "Sourdough Loaf",
         bakeDate: "2026-02-13",
-        ingredients: "90g starter\n325g water\n10g salt\n45g whole wheat\n45g rye\n360g white flour (half ap, half bread)",
+        ingredientsText: "90g starter\n325g water\n10g salt\n45g whole wheat\n45g rye\n360g white flour (half ap, half bread)",
+        ingredients: [
+            Ingredient(id: "i1", bakeId: "preview-1", name: "Starter", amount: "90g", note: nil, sortOrder: 0),
+            Ingredient(id: "i2", bakeId: "preview-1", name: "Water", amount: "325g", note: nil, sortOrder: 1),
+            Ingredient(id: "i3", bakeId: "preview-1", name: "Salt", amount: "10g", note: nil, sortOrder: 2),
+            Ingredient(id: "i4", bakeId: "preview-1", name: "Whole Wheat", amount: "45g", note: nil, sortOrder: 3),
+            Ingredient(id: "i5", bakeId: "preview-1", name: "Rye", amount: "45g", note: nil, sortOrder: 4),
+            Ingredient(id: "i6", bakeId: "preview-1", name: "White Flour", amount: "360g", note: "half ap, half bread", sortOrder: 5),
+        ],
+        ingredientCount: nil,
         notes: nil,
         schedule: [
             ScheduleEntry(id: "s1", bakeId: "preview-1", time: "2:45pm", action: "Feed starter", note: nil, sortOrder: 0),
@@ -45,6 +58,21 @@ struct Bake: Identifiable, Codable, Hashable {
         createdAt: "2026-02-13T00:00:00Z",
         updatedAt: "2026-02-13T00:00:00Z"
     )
+}
+
+struct Ingredient: Identifiable, Codable, Hashable {
+    let id: String
+    var bakeId: String
+    var name: String
+    var amount: String
+    var note: String?
+    var sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, amount, note
+        case bakeId = "bake_id"
+        case sortOrder = "sort_order"
+    }
 }
 
 struct ScheduleEntry: Identifiable, Codable, Hashable {

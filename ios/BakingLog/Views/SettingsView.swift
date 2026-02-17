@@ -30,6 +30,14 @@ struct SettingsView: View {
                 Text("Only needed if you set API_KEY in your worker config")
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
     }

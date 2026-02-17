@@ -8,13 +8,28 @@ export interface Bake {
   id: string;
   title: string;
   bake_date: string;
-  ingredients: string | null;
+  ingredients_text: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
 }
 
+export interface BakeListItem extends Bake {
+  ingredient_count: number;
+}
+
+export interface Ingredient {
+  id: string;
+  bake_id: string;
+  name: string;
+  amount: string;
+  note: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface BakeWithDetails extends Bake {
+  ingredients: Ingredient[];
   schedule: ScheduleEntry[];
   photos: Photo[];
 }
@@ -50,7 +65,8 @@ export interface Webhook {
 export interface CreateBakeRequest {
   title: string;
   bake_date: string;
-  ingredients?: string;
+  ingredients_text?: string;
+  ingredients?: { name: string; amount: string; note?: string }[];
   notes?: string;
   schedule?: { time: string; action: string; note?: string }[];
 }

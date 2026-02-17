@@ -139,14 +139,22 @@ actor APIClient {
 struct CreateBakePayload: Codable {
     let title: String
     let bakeDate: String
-    let ingredients: String?
+    let ingredientsText: String?
+    let ingredients: [IngredientPayload]?
     let notes: String?
     let schedule: [ScheduleEntryPayload]?
 
     enum CodingKeys: String, CodingKey {
         case title, ingredients, notes, schedule
         case bakeDate = "bake_date"
+        case ingredientsText = "ingredients_text"
     }
+}
+
+struct IngredientPayload: Codable {
+    let name: String
+    let amount: String
+    let note: String?
 }
 
 struct ScheduleEntryPayload: Codable {

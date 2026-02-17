@@ -25,10 +25,20 @@ struct BakeEditView: View {
                 }
 
                 // Ingredients
-                Section("Ingredients") {
-                    TextEditor(text: $vm.ingredients)
-                        .frame(minHeight: 120)
-                        .font(.body.monospaced())
+                Section {
+                    ForEach($vm.ingredientEntries) { $entry in
+                        IngredientEntryRow(entry: $entry)
+                    }
+                    .onDelete(perform: vm.removeIngredient)
+                    .onMove(perform: vm.moveIngredient)
+
+                    Button {
+                        vm.addIngredient()
+                    } label: {
+                        Label("Add Ingredient", systemImage: "plus.circle")
+                    }
+                } header: {
+                    Text("Ingredients")
                 }
 
                 // Schedule
@@ -152,6 +162,14 @@ struct BakeEditView: View {
                     vm.loadExisting(existing)
                 }
             }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
             .interactiveDismissDisabled(vm.isSaving)
         }
     }
@@ -168,15 +186,39 @@ struct BakeEditView: View {
     }
 }
 
+struct IngredientEntryRow: View {
+    @Binding var entry: BakeEditViewModel.EditableIngredient
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                TextField("Name", text: $entry.name)
+                    .textInputAutocapitalization(.words)
+
+                TextField("Amount", text: $entry.amount)
+                    .frame(width: 80)
+                    .textInputAutocapitalization(.never)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            if !entry.note.isEmpty || entry.name.isEmpty {
+                TextField("Note (optional)", text: $entry.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 struct ScheduleEntryRow: View {
     @Binding var entry: BakeEditViewModel.EditableScheduleEntry
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                TextField("Time", text: $entry.time)
-                    .frame(width: 90)
-                    .textInputAutocapitalization(.never)
+                DatePicker("", selection: $entry.timeDate, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .frame(width: 100)
 
                 TextField("Action (e.g., Mix, Fold, Shape)", text: $entry.action)
                     .textInputAutocapitalization(.words)

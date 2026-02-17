@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, Bake, BakeWithDetails, ScheduleEntry, Photo } from './types';
+import { Env, Bake, BakeWithDetails, ScheduleEntry, Ingredient, Photo } from './types';
 import bakes from './routes/bakes';
 import photos from './routes/photos';
 import webhooks from './routes/webhooks';
@@ -32,18 +32,23 @@ app.route('/api/webhooks', webhooks);
 // Full export endpoint — useful for pulling data into a personal website
 app.get('/api/export', async (c) => {
   const bakeRows = await c.env.DB.prepare(
-    'SELECT * FROM bakes ORDER BY bake_date DESC'
+    'SELECT id, title, bake_date, ingredients AS ingredients_text, notes, created_at, updated_at FROM bakes ORDER BY bake_date DESC'
   ).all<Bake>();
 
   const allBakes: BakeWithDetails[] = [];
 
   for (const bake of bakeRows.results ?? []) {
-    const [schedule, photos] = await Promise.all([
+    const [schedule, ingredients, photos] = await Promise.all([
       c.env.DB.prepare(
         'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
       )
         .bind(bake.id)
         .all<ScheduleEntry>(),
+      c.env.DB.prepare(
+        'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
+      )
+        .bind(bake.id)
+        .all<Ingredient>(),
       c.env.DB.prepare(
         'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
       )
@@ -53,6 +58,7 @@ app.get('/api/export', async (c) => {
 
     allBakes.push({
       ...bake,
+      ingredients: ingredients.results ?? [],
       schedule: schedule.results ?? [],
       photos: (photos.results ?? []).map((p) => ({
         ...p,

@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS webhooks (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS ingredients (
+  id TEXT PRIMARY KEY,
+  bake_id TEXT NOT NULL REFERENCES bakes(id),
+  name TEXT NOT NULL,
+  amount TEXT NOT NULL,
+  note TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_schedule_bake ON schedule_entries(bake_id);
 CREATE INDEX IF NOT EXISTS idx_photos_bake ON photos(bake_id);
+CREATE INDEX IF NOT EXISTS idx_ingredients_bake ON ingredients(bake_id);
 CREATE INDEX IF NOT EXISTS idx_bakes_date ON bakes(bake_date DESC);

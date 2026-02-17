@@ -6,7 +6,7 @@ options:
 
 settings:
   SWIFT_VERSION: "6.0"
-  DEVELOPMENT_TEAM: "" # Set your team ID here
+  DEVELOPMENT_TEAM: TX552W76H7
 
 targets:
   BakingLog:
@@ -21,23 +21,3 @@ targets:
       MARKETING_VERSION: "1.0.0"
       CURRENT_PROJECT_VERSION: 1
       CODE_SIGN_ENTITLEMENTS: BakingLog/Resources/BakingLog.entitlements
-    dependencies:
-      - target: BakingLogWidgetExtension
-
-  BakingLogWidgetExtension:
-    type: app-extension
-    platform: iOS
-    sources:
-      - BakingLogWidget
-      - path: BakingLog/Models
-        group: Shared/Models
-      - path: BakingLog/Services/APIClient.swift
-        group: Shared/Services
-      - path: BakingLog/App/AppGroup.swift
-        group: Shared/App
-    settings:
-      INFOPLIST_FILE: BakingLogWidget/Info.plist
-      PRODUCT_BUNDLE_IDENTIFIER: com.bakinglog.app.widget
-      MARKETING_VERSION: "1.0.0"
-      CURRENT_PROJECT_VERSION: 1
-      CODE_SIGN_ENTITLEMENTS: BakingLogWidget/BakingLogWidget.entitlements
