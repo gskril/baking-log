@@ -110,7 +110,6 @@ class CalculatorViewModel: ObservableObject {
         case sourdough = "Sourdough"
         case pizza = "Pizza Dough"
         case focaccia = "Focaccia"
-        case starter = "Starter"
 
         var id: String { rawValue }
 
@@ -142,11 +141,6 @@ class CalculatorViewModel: ObservableObject {
                     Ingredient(name: "Olive oil", weight: "30", role: .other),
                     Ingredient(name: "Yeast", weight: "4", role: .other),
                     Ingredient(name: "Salt", weight: "10", role: .other),
-                ]
-            case .starter:
-                return [
-                    Ingredient(name: "Flour", weight: "50", role: .flour),
-                    Ingredient(name: "Water", weight: "50", role: .liquid),
                 ]
             }
         }
