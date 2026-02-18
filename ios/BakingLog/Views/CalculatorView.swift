@@ -4,12 +4,17 @@ struct CalculatorView: View {
     @StateObject private var vm = CalculatorViewModel()
     @FocusState private var focusedField: IngredientField?
     @State private var pendingIngredientFocusId: UUID?
-    @State private var showingNewBake = false
-    @State private var bakePrefill: BakeEditViewModel.Prefill?
+    @State private var presentedDraft: PrefillDraft?
+    @State private var showingMissingIngredientsAlert = false
 
     enum IngredientField: Hashable {
         case name(UUID)
         case weight(UUID)
+    }
+
+    private struct PrefillDraft: Identifiable {
+        let id = UUID()
+        let prefill: BakeEditViewModel.Prefill
     }
 
     var body: some View {
@@ -92,28 +97,45 @@ struct CalculatorView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    bakePrefill = makeBakePrefill()
-                    showingNewBake = bakePrefill != nil
+                    presentNewBakeFromCalculator()
                 } label: {
                     Label("New Bake", systemImage: "text.badge.plus")
                 }
-                .disabled(!canCreateBakePrefill)
             }
             ToolbarItem(placement: .primaryAction) {
                 EditButton()
             }
         }
-        .sheet(isPresented: $showingNewBake, onDismiss: { bakePrefill = nil }) {
-            if let bakePrefill {
-                BakeEditView(prefill: bakePrefill) {
-                    showingNewBake = false
-                }
+        .sheet(item: $presentedDraft) { draft in
+            BakeEditView(prefill: draft.prefill) {
+                DebugTrace.log("CalculatorView: sheet onDismiss callback fired")
+                presentedDraft = nil
             }
+        }
+        .alert("Add Ingredient Weights First", isPresented: $showingMissingIngredientsAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Enter at least one ingredient with a weight before creating a bake from the calculator.")
         }
     }
 
-    private var canCreateBakePrefill: Bool {
-        !prefillIngredients().isEmpty
+    private func presentNewBakeFromCalculator() {
+        // Force any active text field edit to commit before reading vm.ingredients.
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
+        DebugTrace.log("presentNewBake: resigning first responder, building prefill")
+
+        Task { @MainActor in
+            await Task.yield()
+            guard let prefill = makeBakePrefill() else {
+                DebugTrace.log("presentNewBake: no valid ingredients, showing alert")
+                showingMissingIngredientsAlert = true
+                return
+            }
+            DebugTrace.log("presentNewBake: presenting draft with \(prefill.ingredientEntries.count) ingredients")
+            presentedDraft = PrefillDraft(prefill: prefill)
+        }
     }
 
     private func makeBakePrefill() -> BakeEditViewModel.Prefill? {
