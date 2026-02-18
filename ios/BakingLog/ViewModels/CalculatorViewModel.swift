@@ -108,8 +108,6 @@ class CalculatorViewModel: ObservableObject {
 
     enum Preset: String, CaseIterable, Identifiable {
         case sourdough = "Sourdough"
-        case pizza = "Pizza Dough"
-        case focaccia = "Focaccia"
 
         var id: String { rawValue }
 
@@ -124,23 +122,6 @@ class CalculatorViewModel: ObservableObject {
                     Ingredient(name: "Water", weight: "362.5", role: .liquid),
                     Ingredient(name: "Starter", weight: "100", role: .starter),
                     Ingredient(name: "Salt", weight: "11", role: .other),
-                ]
-            case .pizza:
-                return [
-                    Ingredient(name: "Bread flour", weight: "500", role: .flour),
-                    Ingredient(name: "Water", weight: "325", role: .liquid),
-                    Ingredient(name: "Olive oil", weight: "15", role: .other),
-                    Ingredient(name: "Yeast", weight: "3", role: .other),
-                    Ingredient(name: "Salt", weight: "10", role: .other),
-                    Ingredient(name: "Sugar", weight: "10", role: .other),
-                ]
-            case .focaccia:
-                return [
-                    Ingredient(name: "Bread flour", weight: "500", role: .flour),
-                    Ingredient(name: "Water", weight: "400", role: .liquid),
-                    Ingredient(name: "Olive oil", weight: "30", role: .other),
-                    Ingredient(name: "Yeast", weight: "4", role: .other),
-                    Ingredient(name: "Salt", weight: "10", role: .other),
                 ]
             }
         }
