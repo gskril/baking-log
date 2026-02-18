@@ -19,7 +19,7 @@ ios/             iOS app + widget (SwiftUI, XcodeGen)
 
 Key routes: `src/routes/bakes.ts` (CRUD), `src/routes/photos.ts` (upload/serve/delete), `src/routes/webhooks.ts` (management + push)
 
-Scripts: `npm run dev`, `npm run deploy`, `npm run db:init`, `npm run db:init:remote`
+Scripts: `bun run dev`, `bun run deploy`, `bun run db:init`, `bun run db:init:remote`
 
 ### iOS (ios/)
 
@@ -50,9 +50,11 @@ Key files:
 
 ## Development
 
+- **Package manager**: Bun (no npm — always use `bun` for install/run/add)
+
 ```bash
 # Worker
-cd worker && npm install && npm run db:init && npm run dev
+cd worker && bun install && bun run db:init && bun run dev
 
 # iOS (requires XcodeGen)
 cd ios && xcodegen generate && open BakingLog.xcodeproj
