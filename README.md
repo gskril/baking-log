@@ -21,7 +21,7 @@ wrangler r2 bucket create baking-log
 
 # Update wrangler.toml with the database_id from the d1 create output
 
-# Initialize the database schema
+# Apply database migrations
 npm run db:init:remote
 
 # Deploy

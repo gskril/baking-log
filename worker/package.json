@@ -5,8 +5,11 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute baking-log --local --file=./src/db/schema.sql",
-    "db:init:remote": "wrangler d1 execute baking-log --remote --file=./src/db/schema.sql"
+    "db:init": "wrangler d1 migrations apply baking-log --local",
+    "db:init:remote": "wrangler d1 migrations apply baking-log --remote",
+    "db:migrate": "wrangler d1 migrations apply baking-log --local",
+    "db:migrate:remote": "wrangler d1 migrations apply baking-log --remote",
+    "db:migration:create": "wrangler d1 migrations create baking-log"
   },
   "dependencies": {
     "hono": "^4.7.0"
