@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { Env, Webhook, Bake, BakeWithDetails, ScheduleEntry, Ingredient, Photo } from '../types';
+import { Env, Webhook } from '../types';
 import { fireWebhooks } from '../services/webhook';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -15,23 +15,13 @@ app.get('/', async (c) => {
 
 // Create a webhook
 app.post('/', async (c) => {
-  const body = await c.req.json<{
-    url: string;
-    events?: string[];
-    secret?: string;
-  }>();
-
+  const body = await c.req.json<{ url: string; secret?: string }>();
   const id = crypto.randomUUID();
 
   await c.env.DB.prepare(
-    'INSERT INTO webhooks (id, url, events, secret) VALUES (?, ?, ?, ?)'
+    'INSERT INTO webhooks (id, url, secret) VALUES (?, ?, ?)'
   )
-    .bind(
-      id,
-      body.url,
-      JSON.stringify(body.events ?? ['*']),
-      body.secret ?? null
-    )
+    .bind(id, body.url, body.secret ?? null)
     .run();
 
   const webhook = await c.env.DB.prepare('SELECT * FROM webhooks WHERE id = ?')
@@ -41,56 +31,10 @@ app.post('/', async (c) => {
   return c.json(webhook, 201);
 });
 
-// Manually push webhooks — fires events for recent bakes
+// Manually push webhooks — pings all active webhooks
 app.post('/push', async (c) => {
-  const body = await c.req.json<{ since?: string }>().catch(() => ({}) as { since?: string });
-  const since = body.since ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-  const bakeRows = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, ingredients AS ingredients_text, notes, created_at, updated_at FROM bakes WHERE updated_at >= ? ORDER BY updated_at DESC'
-  )
-    .bind(since)
-    .all<Bake>();
-
-  const bakes = bakeRows.results ?? [];
-
-  // Build full details for each bake
-  const detailed: BakeWithDetails[] = [];
-  for (const bake of bakes) {
-    const [schedule, ingredients, photos] = await Promise.all([
-      c.env.DB.prepare(
-        'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
-      )
-        .bind(bake.id)
-        .all<ScheduleEntry>(),
-      c.env.DB.prepare(
-        'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
-      )
-        .bind(bake.id)
-        .all<Ingredient>(),
-      c.env.DB.prepare(
-        'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
-      )
-        .bind(bake.id)
-        .all<Photo>(),
-    ]);
-
-    detailed.push({
-      ...bake,
-      ingredients: ingredients.results ?? [],
-      schedule: schedule.results ?? [],
-      photos: (photos.results ?? []).map((p) => ({
-        ...p,
-        url: `/api/photos/${p.id}/image`,
-      })),
-    });
-  }
-
-  c.executionCtx.waitUntil(
-    fireWebhooks(c.env, 'bake.updated', { bakes: detailed })
-  );
-
-  return c.json({ ok: true, pushed: bakes.length });
+  c.executionCtx.waitUntil(fireWebhooks(c.env));
+  return c.json({ ok: true });
 });
 
 // Delete a webhook

@@ -1,29 +1,12 @@
 import { Env, Webhook } from '../types';
 
-export type WebhookEvent =
-  | 'bake.created'
-  | 'bake.updated'
-  | 'bake.deleted'
-  | 'photo.uploaded'
-  | 'photo.deleted';
-
-export async function fireWebhooks(
-  env: Env,
-  event: WebhookEvent,
-  payload: unknown
-) {
+export async function fireWebhooks(env: Env) {
   const webhooks = await env.DB.prepare(
     'SELECT * FROM webhooks WHERE active = 1'
-  )
-    .all<Webhook>();
+  ).all<Webhook>();
 
-  const matching = (webhooks.results ?? []).filter((wh) => {
-    const events: string[] = JSON.parse(wh.events);
-    return events.includes('*') || events.includes(event);
-  });
-
-  const deliveries = matching.map(async (wh) => {
-    const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
+  const deliveries = (webhooks.results ?? []).map(async (wh) => {
+    const body = JSON.stringify({ event: 'bakes.updated', timestamp: new Date().toISOString() });
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -48,10 +31,9 @@ export async function fireWebhooks(
     try {
       await fetch(wh.url, { method: 'POST', headers, body });
     } catch {
-      // Silently fail — could add a delivery log table later
+      // Silently fail
     }
   });
 
-  // Fire and forget — don't block the response
   await Promise.allSettled(deliveries);
 }

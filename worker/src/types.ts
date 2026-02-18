@@ -56,7 +56,6 @@ export interface Photo {
 export interface Webhook {
   id: string;
   url: string;
-  events: string;
   secret: string | null;
   active: number;
   created_at: string;
