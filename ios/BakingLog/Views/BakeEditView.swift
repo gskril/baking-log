@@ -210,7 +210,6 @@ struct BakeEditView: View {
                 }
             }
             .onAppear {
-                DebugTrace.log("BakeEditView.onAppear: hasLoaded=\(hasLoadedInitialData), prefill=\(prefill != nil)")
                 guard !hasLoadedInitialData else { return }
                 hasLoadedInitialData = true
 
@@ -219,7 +218,6 @@ struct BakeEditView: View {
                 } else if let existingPending {
                     vm.loadExistingPending(existingPending)
                 } else if let prefill {
-                    DebugTrace.log("BakeEditView.onAppear: loading prefill '\(prefill.title)' with \(prefill.ingredientEntries.count) ingredients")
                     vm.loadPrefill(prefill)
                 }
             }
@@ -239,19 +237,9 @@ struct BakeEditView: View {
         focusedIngredientField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
-        DebugTrace.log("submitPrimaryAction: starting save (isEditing=\(vm.isEditing))")
-
         Task { @MainActor in
             await Task.yield()
-            let result = await vm.save()
-            DebugTrace.log("submitPrimaryAction: save returned \(result == nil ? "nil" : result!.title) (savedOffline=\(vm.savedOffline))")
-
-            if result != nil {
-                // Use environment dismiss for a coordinated sheet animation.
-                // Directly nilling the parent's sheet binding (via onDismiss) tears
-                // down the NavigationStack content before the animation runs, which
-                // causes a blank modal on the first presentation.
-                DebugTrace.log("submitPrimaryAction: calling dismiss()")
+            if await vm.save() != nil {
                 dismiss()
                 onDismiss()
             }

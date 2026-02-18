@@ -108,7 +108,6 @@ struct CalculatorView: View {
         }
         .sheet(item: $presentedDraft) { draft in
             BakeEditView(prefill: draft.prefill) {
-                DebugTrace.log("CalculatorView: sheet onDismiss callback fired")
                 presentedDraft = nil
             }
         }
@@ -124,16 +123,12 @@ struct CalculatorView: View {
         focusedField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
-        DebugTrace.log("presentNewBake: resigning first responder, building prefill")
-
         Task { @MainActor in
             await Task.yield()
             guard let prefill = makeBakePrefill() else {
-                DebugTrace.log("presentNewBake: no valid ingredients, showing alert")
                 showingMissingIngredientsAlert = true
                 return
             }
-            DebugTrace.log("presentNewBake: presenting draft with \(prefill.ingredientEntries.count) ingredients")
             presentedDraft = PrefillDraft(prefill: prefill)
         }
     }
