@@ -3,6 +3,10 @@ import { Env, Bake, BakeListItem, BakeWithDetails, ScheduleEntry, Ingredient, Ph
 
 const app = new Hono<{ Bindings: Env }>();
 
+function formatAmount(amount: string): string {
+  return amount.replace(/(\d)\s+([a-zA-Z%])/g, '$1$2');
+}
+
 // List all bakes
 app.get('/', async (c) => {
   const limit = Number(c.req.query('limit') ?? 50);
@@ -57,9 +61,14 @@ app.get('/:id', async (c) => {
     url: `/api/photos/${p.id}/image`,
   }));
 
+  const formattedIngredients = (ingredients.results ?? []).map((ing) => ({
+    ...ing,
+    amount: formatAmount(ing.amount),
+  }));
+
   const result: BakeWithDetails = {
     ...bake,
-    ingredients: ingredients.results ?? [],
+    ingredients: formattedIngredients,
     schedule: schedule.results ?? [],
     photos: photosWithUrls,
   };
