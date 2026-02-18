@@ -239,7 +239,7 @@ struct PendingBakeDetailView: View {
 
                 TextField("Action", text: $newStepAction)
                     .focused($isNewStepActionFocused)
-                    .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.sentences)
                     .textFieldStyle(.roundedBorder)
             }
 

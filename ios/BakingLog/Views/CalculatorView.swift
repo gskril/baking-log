@@ -184,7 +184,7 @@ struct IngredientRow: View {
             HStack {
                 TextField("Name", text: $ingredient.name)
                     .focused(focusedField, equals: .name(ingredient.id))
-                    .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.sentences)
                     .submitLabel(.next)
                     .onSubmit {
                         focusedField.wrappedValue = .weight(ingredient.id)
