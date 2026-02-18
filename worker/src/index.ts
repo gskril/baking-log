@@ -13,6 +13,7 @@ app.use('*', cors());
 // Optional API key auth middleware — skipped if API_KEY is not set
 app.use('/api/*', async (c, next) => {
   if (c.req.path === '/api/export') return next();
+  if (c.req.path.match(/^\/api\/photos\/\d+\/image$/)) return next();
   const apiKey = c.env.API_KEY;
   if (apiKey) {
     const provided = c.req.header('Authorization')?.replace('Bearer ', '');
