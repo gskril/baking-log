@@ -132,7 +132,7 @@ struct BakeListView: View {
             }
         }
         .refreshable {
-            if !syncManager.pendingBakes.isEmpty {
+            if syncManager.hasAnyPending {
                 await syncManager.syncPending()
             }
             await vm.load()

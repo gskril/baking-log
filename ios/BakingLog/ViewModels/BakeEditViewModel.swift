@@ -243,12 +243,11 @@ class BakeEditViewModel: ObservableObject {
             isSaving = false
             return bake
         } catch {
-            // If creating a new bake and offline, queue it locally
             if existingBakeId == nil {
+                // Creating a new bake offline — queue it
                 SyncManager.shared.queueBake(payload: payload, imageDataItems: newImageData)
                 savedOffline = true
                 isSaving = false
-                // Return a placeholder so the UI dismisses
                 return Bake(
                     id: "pending",
                     title: payload.title,
@@ -259,6 +258,35 @@ class BakeEditViewModel: ObservableObject {
                     notes: payload.notes,
                     schedule: nil,
                     photos: nil,
+                    createdAt: Date.now.ISO8601Format(),
+                    updatedAt: Date.now.ISO8601Format()
+                )
+            } else if let existingId = existingBakeId {
+                // Updating an existing bake offline — queue update + photos
+                SyncManager.shared.queueUpdate(bakeId: existingId, payload: payload)
+                if !newImageData.isEmpty {
+                    SyncManager.shared.queuePhotoUpload(bakeId: existingId, imageDataItems: newImageData)
+                }
+                savedOffline = true
+                isSaving = false
+
+                let ingredientModels = ingredients.enumerated().map { i, ing in
+                    Ingredient(id: "local-\(i)", bakeId: existingId, name: ing.name, amount: ing.amount, note: ing.note, sortOrder: i)
+                }
+                let scheduleModels = schedule.enumerated().map { i, entry in
+                    ScheduleEntry(id: "local-\(i)", bakeId: existingId, time: entry.time, action: entry.action, note: entry.note, sortOrder: i)
+                }
+
+                return Bake(
+                    id: existingId,
+                    title: payload.title,
+                    bakeDate: payload.bakeDate,
+                    ingredientsText: nil,
+                    ingredients: ingredientModels.isEmpty ? nil : ingredientModels,
+                    ingredientCount: ingredientModels.isEmpty ? nil : ingredientModels.count,
+                    notes: payload.notes,
+                    schedule: scheduleModels.isEmpty ? nil : scheduleModels,
+                    photos: existingPhotos.isEmpty ? nil : existingPhotos,
                     createdAt: Date.now.ISO8601Format(),
                     updatedAt: Date.now.ISO8601Format()
                 )

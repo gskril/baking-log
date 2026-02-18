@@ -7,11 +7,12 @@ class SyncManager: ObservableObject {
 
     @Published var isOnline = true
     @Published var pendingBakes: [PendingBake] = []
+    @Published var pendingUpdates: [PendingUpdate] = []
+    @Published var pendingPhotoUploads: [PendingPhotoUpload] = []
     @Published var isSyncing = false
 
     private let monitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "com.bakinglog.networkmonitor")
-    private static let storageKey = "pending_bakes"
 
     struct PendingBake: Identifiable, Codable {
         let id: String
@@ -31,8 +32,28 @@ class SyncManager: ObservableObject {
         }
     }
 
+    struct PendingUpdate: Identifiable, Codable {
+        let id: String
+        let bakeId: String
+        var payload: CreateBakePayload
+        let queuedAt: Date
+    }
+
+    struct PendingPhotoUpload: Identifiable, Codable {
+        let id: String
+        let bakeId: String
+        var imageDataItems: [Data]
+        let queuedAt: Date
+    }
+
+    var hasAnyPending: Bool {
+        !pendingBakes.isEmpty || !pendingUpdates.isEmpty || !pendingPhotoUploads.isEmpty
+    }
+
     private init() {
         loadPending()
+        loadPendingUpdates()
+        loadPendingPhotoUploads()
         startMonitoring()
     }
 
@@ -44,7 +65,7 @@ class SyncManager: ObservableObject {
                 guard let self else { return }
                 let wasOffline = !self.isOnline
                 self.isOnline = path.status == .satisfied
-                if wasOffline && self.isOnline && !self.pendingBakes.isEmpty {
+                if wasOffline && self.isOnline && self.hasAnyPending {
                     await self.syncPending()
                 }
             }
@@ -52,15 +73,28 @@ class SyncManager: ObservableObject {
         monitor.start(queue: monitorQueue)
     }
 
-    // MARK: - Local Storage
+    // MARK: - Storage URLs
 
-    private var storageURL: URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent("pending_bakes.json")
+    private var documentsDir: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
+    private var pendingBakesURL: URL {
+        documentsDir.appendingPathComponent("pending_bakes.json")
+    }
+
+    private var pendingUpdatesURL: URL {
+        documentsDir.appendingPathComponent("pending_updates.json")
+    }
+
+    private var pendingPhotoUploadsURL: URL {
+        documentsDir.appendingPathComponent("pending_photo_uploads.json")
+    }
+
+    // MARK: - Load/Save: Pending Bakes
+
     private func loadPending() {
-        guard let data = try? Data(contentsOf: storageURL),
+        guard let data = try? Data(contentsOf: pendingBakesURL),
               let bakes = try? JSONDecoder().decode([PendingBake].self, from: data) else {
             return
         }
@@ -69,10 +103,40 @@ class SyncManager: ObservableObject {
 
     private func savePending() {
         guard let data = try? JSONEncoder().encode(pendingBakes) else { return }
-        try? data.write(to: storageURL)
+        try? data.write(to: pendingBakesURL)
     }
 
-    // MARK: - Queue & Sync
+    // MARK: - Load/Save: Pending Updates
+
+    private func loadPendingUpdates() {
+        guard let data = try? Data(contentsOf: pendingUpdatesURL),
+              let updates = try? JSONDecoder().decode([PendingUpdate].self, from: data) else {
+            return
+        }
+        pendingUpdates = updates
+    }
+
+    private func savePendingUpdates() {
+        guard let data = try? JSONEncoder().encode(pendingUpdates) else { return }
+        try? data.write(to: pendingUpdatesURL)
+    }
+
+    // MARK: - Load/Save: Pending Photo Uploads
+
+    private func loadPendingPhotoUploads() {
+        guard let data = try? Data(contentsOf: pendingPhotoUploadsURL),
+              let uploads = try? JSONDecoder().decode([PendingPhotoUpload].self, from: data) else {
+            return
+        }
+        pendingPhotoUploads = uploads
+    }
+
+    private func savePendingPhotoUploads() {
+        guard let data = try? JSONEncoder().encode(pendingPhotoUploads) else { return }
+        try? data.write(to: pendingPhotoUploadsURL)
+    }
+
+    // MARK: - Queue: Bakes (create)
 
     func queueBake(payload: CreateBakePayload, imageDataItems: [Data]) {
         let pending = PendingBake(
@@ -97,12 +161,55 @@ class SyncManager: ObservableObject {
         savePending()
     }
 
+    // MARK: - Queue: Updates (edit existing bake)
+
+    func queueUpdate(bakeId: String, payload: CreateBakePayload) {
+        // Coalesce: replace existing payload for the same bakeId
+        if let index = pendingUpdates.firstIndex(where: { $0.bakeId == bakeId }) {
+            pendingUpdates[index].payload = payload
+        } else {
+            pendingUpdates.append(PendingUpdate(
+                id: UUID().uuidString,
+                bakeId: bakeId,
+                payload: payload,
+                queuedAt: .now
+            ))
+        }
+        savePendingUpdates()
+    }
+
+    // MARK: - Queue: Photo Uploads
+
+    func queuePhotoUpload(bakeId: String, imageDataItems: [Data]) {
+        // Coalesce: append images to existing entry for the same bakeId
+        if let index = pendingPhotoUploads.firstIndex(where: { $0.bakeId == bakeId }) {
+            pendingPhotoUploads[index].imageDataItems.append(contentsOf: imageDataItems)
+        } else {
+            pendingPhotoUploads.append(PendingPhotoUpload(
+                id: UUID().uuidString,
+                bakeId: bakeId,
+                imageDataItems: imageDataItems,
+                queuedAt: .now
+            ))
+        }
+        savePendingPhotoUploads()
+    }
+
+    // MARK: - Query
+
+    func hasPendingChanges(for bakeId: String) -> Bool {
+        pendingUpdates.contains { $0.bakeId == bakeId }
+            || pendingPhotoUploads.contains { $0.bakeId == bakeId }
+    }
+
+    // MARK: - Sync All Queues
+
     func syncPending() async {
-        guard !pendingBakes.isEmpty, !isSyncing else { return }
+        guard hasAnyPending, !isSyncing else { return }
         isSyncing = true
 
-        var remaining: [PendingBake] = []
-
+        // 1. Sync pending creates
+        var remainingBakes: [PendingBake] = []
         for pending in pendingBakes {
             do {
                 let bake = try await APIClient.shared.createBake(pending.payload)
@@ -110,13 +217,44 @@ class SyncManager: ObservableObject {
                     _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: imageData)
                 }
             } catch {
-                // Keep it in the queue if sync fails
-                remaining.append(pending)
+                remainingBakes.append(pending)
             }
         }
-
-        pendingBakes = remaining
+        pendingBakes = remainingBakes
         savePending()
+
+        // 2. Sync pending updates
+        var remainingUpdates: [PendingUpdate] = []
+        for update in pendingUpdates {
+            do {
+                _ = try await APIClient.shared.updateBake(id: update.bakeId, update.payload)
+            } catch {
+                remainingUpdates.append(update)
+            }
+        }
+        pendingUpdates = remainingUpdates
+        savePendingUpdates()
+
+        // 3. Sync pending photo uploads
+        var remainingPhotos: [PendingPhotoUpload] = []
+        for upload in pendingPhotoUploads {
+            var failedData: [Data] = []
+            for imageData in upload.imageDataItems {
+                do {
+                    _ = try await APIClient.shared.uploadPhoto(bakeId: upload.bakeId, imageData: imageData)
+                } catch {
+                    failedData.append(imageData)
+                }
+            }
+            if !failedData.isEmpty {
+                var remaining = upload
+                remaining.imageDataItems = failedData
+                remainingPhotos.append(remaining)
+            }
+        }
+        pendingPhotoUploads = remainingPhotos
+        savePendingPhotoUploads()
+
         isSyncing = false
     }
 }

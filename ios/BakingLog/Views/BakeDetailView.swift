@@ -16,11 +16,12 @@ struct BakeDetailView: View {
     @State private var editedNotes: String = ""
     @State private var isSavingNotes = false
     @FocusState private var isNewStepActionFocused: Bool
+    @ObservedObject private var syncManager = SyncManager.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoading && bake == nil {
                 ProgressView()
             } else if let bake {
                 ScrollView {
@@ -45,8 +46,17 @@ struct BakeDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             if bake != nil {
-                Button("Edit") {
-                    showingEdit = true
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 12) {
+                        if syncManager.hasPendingChanges(for: bakeId) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                        }
+                        Button("Edit") {
+                            showingEdit = true
+                        }
+                    }
                 }
             }
         }
@@ -269,13 +279,12 @@ struct BakeDetailView: View {
         var schedulePayload = (bake.schedule ?? []).map {
             ScheduleEntryPayload(time: $0.time, action: $0.action, note: $0.note)
         }
-        schedulePayload.append(
-            ScheduleEntryPayload(
-                time: timeFormatter.string(from: newStepTime),
-                action: newStepAction,
-                note: newStepNote.isEmpty ? nil : newStepNote
-            )
+        let newEntry = ScheduleEntryPayload(
+            time: timeFormatter.string(from: newStepTime),
+            action: newStepAction,
+            note: newStepNote.isEmpty ? nil : newStepNote
         )
+        schedulePayload.append(newEntry)
 
         let payload = buildPayload(
             from: bake,
@@ -283,10 +292,31 @@ struct BakeDetailView: View {
             schedule: schedulePayload
         )
 
-        _ = try? await APIClient.shared.updateBake(id: bake.id, payload)
+        do {
+            let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
+            self.bake = updated
+            editedNotes = updated.notes ?? ""
+        } catch {
+            // Offline: apply optimistic local update
+            let newScheduleEntry = ScheduleEntry(
+                id: "local-\(UUID().uuidString)",
+                bakeId: bake.id,
+                time: timeFormatter.string(from: newStepTime),
+                action: newStepAction,
+                note: newStepNote.isEmpty ? nil : newStepNote,
+                sortOrder: (bake.schedule?.count ?? 0)
+            )
+            var updated = bake
+            var schedule = updated.schedule ?? []
+            schedule.append(newScheduleEntry)
+            updated.schedule = schedule
+            self.bake = updated
+
+            syncManager.queueUpdate(bakeId: bake.id, payload: payload)
+        }
+
         resetAddStep()
         isSavingStep = false
-        await load()
     }
 
     private func saveNotes() async {
@@ -305,9 +335,17 @@ struct BakeDetailView: View {
             schedule: existingSchedule.isEmpty ? nil : existingSchedule
         )
 
-        if let updated = try? await APIClient.shared.updateBake(id: bake.id, payload) {
+        do {
+            let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
             self.bake = updated
             editedNotes = updated.notes ?? ""
+        } catch {
+            // Offline: apply optimistic local update
+            var updated = bake
+            updated.notes = noteValue
+            self.bake = updated
+
+            syncManager.queueUpdate(bakeId: bake.id, payload: payload)
         }
 
         isSavingNotes = false
@@ -321,18 +359,31 @@ struct BakeDetailView: View {
         }
 
         isUploadingPhotos = true
-        defer {
-            isUploadingPhotos = false
-            selectedPhotos.removeAll()
-        }
+        let items = selectedPhotos
+        selectedPhotos.removeAll()
 
-        for item in selectedPhotos {
-            if let data = try? await item.loadTransferable(type: Data.self) {
-                _ = try? await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+        var failedData: [Data] = []
+        var updatedBake = bake
+
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            do {
+                let photo = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                var photos = updatedBake.photos ?? []
+                photos.append(photo)
+                updatedBake.photos = photos
+            } catch {
+                failedData.append(data)
             }
         }
 
-        await load()
+        self.bake = updatedBake
+
+        if !failedData.isEmpty {
+            syncManager.queuePhotoUpload(bakeId: bake.id, imageDataItems: failedData)
+        }
+
+        isUploadingPhotos = false
     }
 
     private func buildPayload(from bake: Bake, notes: String?, schedule: [ScheduleEntryPayload]?) -> CreateBakePayload {
@@ -359,9 +410,13 @@ struct BakeDetailView: View {
     }
 
     private func load() async {
-        isLoading = true
-        bake = try? await APIClient.shared.getBake(id: bakeId)
-        editedNotes = bake?.notes ?? ""
+        if bake == nil {
+            isLoading = true
+        }
+        if let loaded = try? await APIClient.shared.getBake(id: bakeId) {
+            bake = loaded
+            editedNotes = loaded.notes ?? ""
+        }
         isLoading = false
     }
 }
