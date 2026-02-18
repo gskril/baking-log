@@ -267,7 +267,7 @@ struct IngredientEntryRow: View {
             HStack {
                 TextField("Name", text: $entry.name)
                     .focused(focusedField, equals: .name(entry.id))
-                    .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.sentences)
                     .submitLabel(.next)
                     .onSubmit {
                         focusedField.wrappedValue = .amount(entry.id)
@@ -308,8 +308,8 @@ struct ScheduleEntryRow: View {
                     .labelsHidden()
                     .frame(width: 100)
 
-                TextField("Action (e.g., Mix, Fold, Shape)", text: $entry.action)
-                    .textInputAutocapitalization(.words)
+                TextField("Action (e.g., Mix, fold, shape)", text: $entry.action)
+                    .textInputAutocapitalization(.sentences)
             }
 
             TextField("Note (optional)", text: $entry.note)
