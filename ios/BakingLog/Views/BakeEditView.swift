@@ -5,9 +5,11 @@ struct BakeEditView: View {
     @StateObject private var vm = BakeEditViewModel()
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingIngredientFocusId: UUID?
+    @State private var hasLoadedInitialData = false
     @FocusState private var focusedIngredientField: IngredientField?
     let existing: Bake?
     let existingPending: SyncManager.PendingBake?
+    let prefill: BakeEditViewModel.Prefill?
     let onDismiss: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -19,12 +21,21 @@ struct BakeEditView: View {
     init(existing: Bake? = nil, onDismiss: @escaping () -> Void) {
         self.existing = existing
         self.existingPending = nil
+        self.prefill = nil
         self.onDismiss = onDismiss
     }
 
     init(existingPending: SyncManager.PendingBake, onDismiss: @escaping () -> Void) {
         self.existing = nil
         self.existingPending = existingPending
+        self.prefill = nil
+        self.onDismiss = onDismiss
+    }
+
+    init(prefill: BakeEditViewModel.Prefill, onDismiss: @escaping () -> Void) {
+        self.existing = nil
+        self.existingPending = nil
+        self.prefill = prefill
         self.onDismiss = onDismiss
     }
 
@@ -204,10 +215,15 @@ struct BakeEditView: View {
                 }
             }
             .onAppear {
+                guard !hasLoadedInitialData else { return }
+                hasLoadedInitialData = true
+
                 if let existing {
                     vm.loadExisting(existing)
                 } else if let existingPending {
                     vm.loadExistingPending(existingPending)
+                } else if let prefill {
+                    vm.loadPrefill(prefill)
                 }
             }
             .onChange(of: vm.ingredientEntries.count) {

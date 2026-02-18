@@ -42,6 +42,12 @@ class BakeEditViewModel: ObservableObject {
         var note: String
     }
 
+    struct Prefill {
+        var title: String
+        var ingredientEntries: [EditableIngredient]
+        var notes: String?
+    }
+
     var isEditing: Bool { existingBakeId != nil || pendingBakeId != nil }
 
     // MARK: - Time Formatting
@@ -123,6 +129,20 @@ class BakeEditViewModel: ObservableObject {
         }
 
         pendingExistingImages = pending.imageDataItems
+    }
+
+    func loadPrefill(_ prefill: Prefill) {
+        existingBakeId = nil
+        pendingBakeId = nil
+        title = prefill.title
+        notes = prefill.notes ?? ""
+        ingredientEntries = prefill.ingredientEntries
+        scheduleEntries = []
+        existingPhotos = []
+        pendingExistingImages = []
+        newImages = []
+        error = nil
+        bakeDate = .now
     }
 
     // MARK: - Ingredient CRUD

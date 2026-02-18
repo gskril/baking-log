@@ -4,6 +4,8 @@ struct CalculatorView: View {
     @StateObject private var vm = CalculatorViewModel()
     @FocusState private var focusedField: IngredientField?
     @State private var pendingIngredientFocusId: UUID?
+    @State private var showingNewBake = false
+    @State private var bakePrefill: BakeEditViewModel.Prefill?
 
     enum IngredientField: Hashable {
         case name(UUID)
@@ -88,9 +90,54 @@ struct CalculatorView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    bakePrefill = makeBakePrefill()
+                    showingNewBake = bakePrefill != nil
+                } label: {
+                    Label("New Bake", systemImage: "text.badge.plus")
+                }
+                .disabled(!canCreateBakePrefill)
+            }
             ToolbarItem(placement: .primaryAction) {
                 EditButton()
             }
+        }
+        .sheet(isPresented: $showingNewBake, onDismiss: { bakePrefill = nil }) {
+            if let bakePrefill {
+                BakeEditView(prefill: bakePrefill) {
+                    showingNewBake = false
+                }
+            }
+        }
+    }
+
+    private var canCreateBakePrefill: Bool {
+        !prefillIngredients().isEmpty
+    }
+
+    private func makeBakePrefill() -> BakeEditViewModel.Prefill? {
+        let ingredientEntries = prefillIngredients()
+        guard !ingredientEntries.isEmpty else { return nil }
+
+        return BakeEditViewModel.Prefill(
+            title: "Calculator Bake",
+            ingredientEntries: ingredientEntries,
+            notes: nil
+        )
+    }
+
+    private func prefillIngredients() -> [BakeEditViewModel.EditableIngredient] {
+        vm.ingredients.compactMap { ingredient in
+            let name = ingredient.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let amount = ingredient.weight.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !amount.isEmpty else { return nil }
+            return BakeEditViewModel.EditableIngredient(
+                name: name.isEmpty ? ingredient.role.rawValue : name,
+                amountValue: amount,
+                unit: .grams,
+                note: ""
+            )
         }
     }
 }
