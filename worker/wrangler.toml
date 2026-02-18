@@ -13,7 +13,3 @@ bucket_name = "baking-log"
 
 [observability]
 enabled = false
-
-[vars]
-# Optional: set a shared API key for basic protection
-# API_KEY = "your-secret-key"
