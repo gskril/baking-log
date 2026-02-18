@@ -5,7 +5,7 @@ compatibility_date = "2025-09-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "baking-log"
-database_id = "7b0cebe8-ac37-482d-acca-e2a9ffd13961"
+database_id = "28b6fe2b-6bdf-4e80-b804-209dd4cc2353"
 
 [[r2_buckets]]
 binding = "PHOTOS"
