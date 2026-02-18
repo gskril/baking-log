@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS bakes (
   id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
+  title TEXT,
   bake_date TEXT NOT NULL,
   ingredients TEXT,
   notes TEXT,
