@@ -209,12 +209,6 @@ struct IngredientRow: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
-
-                if ingredient.weightGrams > 0 {
-                    Text(String(format: "%.1f%%", percentage))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }

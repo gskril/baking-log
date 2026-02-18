@@ -45,7 +45,7 @@ struct BakeEditView: View {
                 // Basic Info
                 Section {
                     TextField("Title", text: $vm.title)
-                        .textInputAutocapitalization(.words)
+                        .textInputAutocapitalization(.sentences)
 
                     DatePicker("Start Date", selection: $vm.bakeDate, displayedComponents: .date)
                 }

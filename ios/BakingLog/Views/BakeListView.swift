@@ -89,7 +89,7 @@ struct BakeListView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 16) {
+                HStack(spacing: 8) {
                     // Push webhooks button
                     Button {
                         Task { await vm.pushWebhooks() }
@@ -98,6 +98,8 @@ struct BakeListView: View {
                             ProgressView()
                         } else {
                             Image(systemName: "paperplane")
+                                .padding(8)
+                                .contentShape(Rectangle())
                         }
                     }
                     .disabled(vm.isPushing)
@@ -106,6 +108,8 @@ struct BakeListView: View {
                         showingNewBake = true
                     } label: {
                         Image(systemName: "plus")
+                            .padding(8)
+                            .contentShape(Rectangle())
                     }
                 }
             }

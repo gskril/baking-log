@@ -32,8 +32,8 @@ class BakeListViewModel: ObservableObject {
         isPushing = true
         pushResult = nil
         do {
-            let result = try await APIClient.shared.pushWebhooks()
-            pushResult = "Pushed \(result.pushed) bake\(result.pushed == 1 ? "" : "s")"
+            try await APIClient.shared.pushWebhooks()
+            pushResult = "Webhooks pushed"
         } catch {
             pushResult = "Push failed: \(error.localizedDescription)"
         }

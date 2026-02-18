@@ -112,11 +112,6 @@ actor APIClient {
 
     // MARK: - Webhooks
 
-    struct PushResult: Codable {
-        let ok: Bool
-        let pushed: Int
-    }
-
     func listWebhooks() async throws -> [Webhook] {
         let req = request("/api/webhooks", contentType: nil)
         let (data, _) = try await URLSession.shared.data(for: req)
@@ -138,12 +133,9 @@ actor APIClient {
         _ = try await URLSession.shared.data(for: req)
     }
 
-    func pushWebhooks(since: Date? = nil) async throws -> PushResult {
-        let sinceISO = (since ?? Date(timeIntervalSinceNow: -86400)).ISO8601Format()
-        let body = try JSONEncoder().encode(["since": sinceISO])
-        let req = request("/api/webhooks/push", method: "POST", body: body)
-        let (data, _) = try await URLSession.shared.data(for: req)
-        return try decoder.decode(PushResult.self, from: data)
+    func pushWebhooks() async throws {
+        let req = request("/api/webhooks/push", method: "POST", body: Data("{}".utf8))
+        _ = try await URLSession.shared.data(for: req)
     }
 
     /// Build a photo URL synchronously — safe to call from SwiftUI view bodies.
