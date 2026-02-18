@@ -1,0 +1,16 @@
+export const unitAbbreviations: Record<string, string> = {
+  g: 'grams',
+  kg: 'kilograms',
+  mg: 'milligrams',
+  oz: 'ounces',
+  lb: 'pounds',
+  lbs: 'pounds',
+  ml: 'milliliters',
+  l: 'liters',
+  tsp: 'teaspoons',
+  tbsp: 'tablespoons',
+  cup: 'cups',
+  cups: 'cups',
+  pinch: 'pinch',
+  dash: 'dash',
+};

@@ -1,10 +1,14 @@
 import { Hono } from 'hono';
 import { Env, Bake, BakeListItem, BakeWithDetails, ScheduleEntry, Ingredient, Photo, CreateBakeRequest, UpdateBakeRequest } from '../types';
+import { unitAbbreviations } from '../units';
 
 const app = new Hono<{ Bindings: Env }>();
 
 function formatAmount(amount: string): string {
-  return amount.replace(/(\d)\s+([a-zA-Z%])/g, '$1$2');
+  return amount.replace(/(\d\s*)([a-zA-Z]+)/, (_, num, unit) => {
+    const full = unitAbbreviations[unit.toLowerCase()];
+    return full ? `${num.trimEnd()} ${full}` : `${num.trimEnd()} ${unit}`;
+  });
 }
 
 // List all bakes
