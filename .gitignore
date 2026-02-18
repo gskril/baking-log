@@ -17,7 +17,8 @@ ios/build/
 *.dSYM
 
 # Env
-.env
+.env*
+!.env.example
 .dev.vars
 
 # OS

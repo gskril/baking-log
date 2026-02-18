@@ -12,9 +12,8 @@ This guide is for developers and coding agents integrating with the Baking Log W
 Auth is optional and controlled by Worker env var `API_KEY`.
 
 - If `API_KEY` is not set: API is open.
-- If `API_KEY` is set: every `/api/*` route requires either:
-  - `Authorization: Bearer <API_KEY>`, or
-  - `?key=<API_KEY>` query param.
+- If `API_KEY` is set: every `/api/*` route requires:
+  - `Authorization: Bearer <API_KEY>`
 
 Unauthorized response:
 

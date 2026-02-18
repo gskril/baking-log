@@ -14,9 +14,7 @@ app.use('*', cors());
 app.use('/api/*', async (c, next) => {
   const apiKey = c.env.API_KEY;
   if (apiKey) {
-    const provided =
-      c.req.header('Authorization')?.replace('Bearer ', '') ??
-      c.req.query('key');
+    const provided = c.req.header('Authorization')?.replace('Bearer ', '');
     if (provided !== apiKey) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
