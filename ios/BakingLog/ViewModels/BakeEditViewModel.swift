@@ -332,6 +332,20 @@ class BakeEditViewModel: ObservableObject {
         }
     }
 
+    func moveExistingPhoto(fromId sourceId: String, toId destinationId: String) {
+        guard let sourceIndex = existingPhotos.firstIndex(where: { $0.id == sourceId }),
+              let destIndex = existingPhotos.firstIndex(where: { $0.id == destinationId }) else {
+            return
+        }
+        let offset = destIndex > sourceIndex ? destIndex + 1 : destIndex
+        existingPhotos.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: offset)
+        guard let bakeId = existingBakeId else { return }
+        let photoIds = existingPhotos.map(\.id)
+        Task {
+            try? await APIClient.shared.reorderPhotos(bakeId: bakeId, photoIds: photoIds)
+        }
+    }
+
     func deleteExistingPhoto(_ photo: Photo) async {
         try? await APIClient.shared.deletePhoto(id: photo.id)
         existingPhotos.removeAll { $0.id == photo.id }

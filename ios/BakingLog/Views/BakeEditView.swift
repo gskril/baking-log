@@ -117,7 +117,7 @@ struct BakeEditView: View {
                         }
                     }
 
-                    // Existing server photos
+                    // Existing server photos (drag to reorder)
                     if !vm.existingPhotos.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -141,8 +141,20 @@ struct BakeEditView: View {
                                         }
                                         .offset(x: 4, y: -4)
                                     }
+                                    .draggable(photo.id)
+                                    .dropDestination(for: String.self) { droppedIds, _ in
+                                        guard let sourceId = droppedIds.first else { return false }
+                                        vm.moveExistingPhoto(fromId: sourceId, toId: photo.id)
+                                        return true
+                                    }
                                 }
                             }
+                        }
+
+                        if vm.existingPhotos.count > 1 {
+                            Text("Hold and drag to reorder")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
 

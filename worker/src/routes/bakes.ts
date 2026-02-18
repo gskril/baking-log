@@ -46,7 +46,7 @@ app.get('/:id', async (c) => {
       .bind(id)
       .all<Ingredient>(),
     c.env.DB.prepare(
-      'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
+      'SELECT * FROM photos WHERE bake_id = ? ORDER BY sort_order ASC, created_at ASC'
     )
       .bind(id)
       .all<Photo>(),
