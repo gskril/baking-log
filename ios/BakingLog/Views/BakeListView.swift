@@ -85,7 +85,7 @@ struct BakeListView: View {
         }
         .navigationTitle("Baking Log")
         .navigationDestination(for: Bake.self) { bake in
-            BakeDetailView(bakeId: bake.id)
+            BakeDetailView(bakeId: bake.id, initialTitle: bake.title)
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

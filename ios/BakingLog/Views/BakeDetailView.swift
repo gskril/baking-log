@@ -3,6 +3,7 @@ import PhotosUI
 
 struct BakeDetailView: View {
     let bakeId: String
+    let initialTitle: String?
     @State private var bake: Bake?
     @State private var isLoading = true
     @State private var showingEdit = false
@@ -52,7 +53,7 @@ struct BakeDetailView: View {
                 }
             }
         }
-        .navigationTitle(bake?.title ?? "Bake")
+        .navigationTitle(bake?.title ?? initialTitle ?? "Bake")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             if bake != nil {
