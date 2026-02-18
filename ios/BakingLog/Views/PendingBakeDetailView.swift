@@ -67,8 +67,8 @@ struct PendingBakeDetailView: View {
         .onAppear {
             editedNotes = pending?.payload.notes ?? ""
         }
-        .onChange(of: pending?.id) {
-            editedNotes = pending?.payload.notes ?? ""
+        .onChange(of: pending?.payload.notes ?? "") { _, newValue in
+            editedNotes = newValue
         }
         .onChange(of: selectedPhotos) {
             Task { await addSelectedPhotosToPending() }
@@ -259,7 +259,7 @@ struct PendingBakeDetailView: View {
                     saveNewStep()
                 }
                 .bold()
-                .disabled(newStepAction.isEmpty)
+                .disabled(newStepAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(.top, 4)
@@ -270,13 +270,16 @@ struct PendingBakeDetailView: View {
 
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
+        let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAction.isEmpty else { return }
 
         var schedulePayload = pending.payload.schedule ?? []
         schedulePayload.append(
             ScheduleEntryPayload(
                 time: timeFormatter.string(from: newStepTime),
-                action: newStepAction,
-                note: newStepNote.isEmpty ? nil : newStepNote
+                action: trimmedAction,
+                note: trimmedNote.isEmpty ? nil : trimmedNote
             )
         )
 
@@ -308,10 +311,7 @@ struct PendingBakeDetailView: View {
 
     private func addSelectedPhotosToPending() async {
         guard !selectedPhotos.isEmpty else { return }
-        guard let pending else {
-            selectedPhotos.removeAll()
-            return
-        }
+        let items = selectedPhotos
 
         isAddingPhotos = true
         defer {
@@ -319,16 +319,21 @@ struct PendingBakeDetailView: View {
             selectedPhotos.removeAll()
         }
 
-        var updatedImages = pending.imageDataItems
-        for item in selectedPhotos {
+        var addedImages: [Data] = []
+        for item in items {
             if let data = try? await item.loadTransferable(type: Data.self) {
-                updatedImages.append(data)
+                addedImages.append(data)
             }
         }
+        guard !addedImages.isEmpty else { return }
+        guard let latestPending = syncManager.pendingBakes.first(where: { $0.id == pendingId }) else { return }
+
+        var updatedImages = latestPending.imageDataItems
+        updatedImages.append(contentsOf: addedImages)
 
         syncManager.updatePending(
-            id: pending.id,
-            payload: pending.payload,
+            id: latestPending.id,
+            payload: latestPending.payload,
             imageDataItems: updatedImages
         )
     }
@@ -342,7 +347,7 @@ struct PendingBakeDetailView: View {
             bakeDate: pending.payload.bakeDate,
             ingredientsText: pending.payload.ingredientsText,
             ingredients: pending.payload.ingredients,
-            notes: trimmed.isEmpty ? nil : editedNotes,
+            notes: trimmed.isEmpty ? nil : trimmed,
             schedule: pending.payload.schedule
         )
 

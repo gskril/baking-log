@@ -15,9 +15,9 @@ struct BakeDetailView: View {
     @State private var isUploadingPhotos = false
     @State private var editedNotes: String = ""
     @State private var isSavingNotes = false
+    @State private var loadError: String?
     @FocusState private var isNewStepActionFocused: Bool
     @ObservedObject private var syncManager = SyncManager.shared
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -39,6 +39,16 @@ struct BakeDetailView: View {
                         notesSection(bake: bake)
                     }
                     .padding()
+                }
+            } else {
+                ContentUnavailableView {
+                    Label("Bake Unavailable", systemImage: "wifi.slash")
+                } description: {
+                    Text(loadError ?? "Could not load this bake.")
+                } actions: {
+                    Button("Retry") {
+                        Task { await load() }
+                    }
                 }
             }
         }
@@ -168,7 +178,7 @@ struct BakeDetailView: View {
             }
 
             if showingAddStep {
-                inlineAddStepForm(bake: bake)
+                inlineAddStepForm()
             } else {
                 Button {
                     showingAddStep = true
@@ -226,7 +236,7 @@ struct BakeDetailView: View {
     // MARK: - Inline Add Step
 
     @ViewBuilder
-    private func inlineAddStepForm(bake: Bake) -> some View {
+    private func inlineAddStepForm() -> some View {
         VStack(spacing: 10) {
             Divider()
 
@@ -254,7 +264,7 @@ struct BakeDetailView: View {
                 Spacer()
 
                 Button {
-                    Task { await saveNewStep(bake: bake) }
+                    Task { await saveNewStep() }
                 } label: {
                     if isSavingStep {
                         ProgressView()
@@ -263,17 +273,24 @@ struct BakeDetailView: View {
                             .bold()
                     }
                 }
-                .disabled(newStepAction.isEmpty || isSavingStep)
+                .disabled(newStepAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingStep)
             }
         }
         .padding(.top, 4)
     }
 
-    private func saveNewStep(bake: Bake) async {
+    private func saveNewStep() async {
+        guard let bake else { return }
         isSavingStep = true
 
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
+        let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAction.isEmpty else {
+            isSavingStep = false
+            return
+        }
 
         // Build schedule: existing entries + new entry
         var schedulePayload = (bake.schedule ?? []).map {
@@ -281,8 +298,8 @@ struct BakeDetailView: View {
         }
         let newEntry = ScheduleEntryPayload(
             time: timeFormatter.string(from: newStepTime),
-            action: newStepAction,
-            note: newStepNote.isEmpty ? nil : newStepNote
+            action: trimmedAction,
+            note: trimmedNote.isEmpty ? nil : trimmedNote
         )
         schedulePayload.append(newEntry)
 
@@ -294,6 +311,7 @@ struct BakeDetailView: View {
 
         do {
             let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
+            syncManager.clearPendingUpdate(for: bake.id)
             self.bake = updated
             editedNotes = updated.notes ?? ""
         } catch {
@@ -302,8 +320,8 @@ struct BakeDetailView: View {
                 id: "local-\(UUID().uuidString)",
                 bakeId: bake.id,
                 time: timeFormatter.string(from: newStepTime),
-                action: newStepAction,
-                note: newStepNote.isEmpty ? nil : newStepNote,
+                action: trimmedAction,
+                note: trimmedNote.isEmpty ? nil : trimmedNote,
                 sortOrder: (bake.schedule?.count ?? 0)
             )
             var updated = bake
@@ -324,7 +342,7 @@ struct BakeDetailView: View {
         isSavingNotes = true
 
         let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let noteValue = trimmed.isEmpty ? nil : editedNotes
+        let noteValue = trimmed.isEmpty ? nil : trimmed
         let existingSchedule = (bake.schedule ?? []).map {
             ScheduleEntryPayload(time: $0.time, action: $0.action, note: $0.note)
         }
@@ -337,6 +355,7 @@ struct BakeDetailView: View {
 
         do {
             let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
+            syncManager.clearPendingUpdate(for: bake.id)
             self.bake = updated
             editedNotes = updated.notes ?? ""
         } catch {
@@ -344,6 +363,7 @@ struct BakeDetailView: View {
             var updated = bake
             updated.notes = noteValue
             self.bake = updated
+            editedNotes = noteValue ?? ""
 
             syncManager.queueUpdate(bakeId: bake.id, payload: payload)
         }
@@ -413,9 +433,23 @@ struct BakeDetailView: View {
         if bake == nil {
             isLoading = true
         }
-        if let loaded = try? await APIClient.shared.getBake(id: bakeId) {
-            bake = loaded
-            editedNotes = loaded.notes ?? ""
+        loadError = nil
+
+        do {
+            let loaded = try await APIClient.shared.getBake(id: bakeId)
+            let merged = syncManager.mergedBakeWithPendingChanges(loaded)
+            bake = merged
+            editedNotes = merged.notes ?? ""
+        } catch {
+            if let currentBake = bake {
+                let merged = syncManager.mergedBakeWithPendingChanges(currentBake)
+                bake = merged
+                editedNotes = merged.notes ?? ""
+            } else if let pendingBake = syncManager.localBakeFromPendingUpdate(bakeId: bakeId) {
+                bake = pendingBake
+                editedNotes = pendingBake.notes ?? ""
+            }
+            loadError = error.localizedDescription
         }
         isLoading = false
     }

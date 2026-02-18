@@ -79,9 +79,15 @@ class BakeEditViewModel: ObservableObject {
 
     func loadExisting(_ bake: Bake) {
         existingBakeId = bake.id
+        pendingBakeId = nil
         title = bake.title
         notes = bake.notes ?? ""
         existingPhotos = bake.photos ?? []
+        pendingExistingImages = []
+        newImages = []
+        ingredientEntries = []
+        scheduleEntries = []
+        error = nil
 
         // Parse bake_date
         let formatter = DateFormatter()
@@ -107,9 +113,15 @@ class BakeEditViewModel: ObservableObject {
     }
 
     func loadExistingPending(_ pending: SyncManager.PendingBake) {
+        existingBakeId = nil
         pendingBakeId = pending.id
         title = pending.payload.title
         notes = pending.payload.notes ?? ""
+        existingPhotos = []
+        newImages = []
+        ingredientEntries = []
+        scheduleEntries = []
+        error = nil
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -120,6 +132,10 @@ class BakeEditViewModel: ObservableObject {
                 let parsed = Self.parseAmount($0.amount)
                 return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
             }
+        } else if let text = pending.payload.ingredientsText, !text.isEmpty {
+            ingredientEntries = text.components(separatedBy: "\n")
+                .filter { !$0.isEmpty }
+                .map { EditableIngredient(name: $0, amountValue: "", unit: .grams, note: "") }
         }
 
         if let schedule = pending.payload.schedule, !schedule.isEmpty {
@@ -178,16 +194,20 @@ class BakeEditViewModel: ObservableObject {
     func save() async -> Bake? {
         isSaving = true
         error = nil
+        savedOffline = false
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
 
         let schedule = scheduleEntries
-            .filter { !$0.action.isEmpty }
+            .filter { !$0.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map { ScheduleEntryPayload(time: Self.formatTime($0.timeDate), action: $0.action, note: $0.note.isEmpty ? nil : $0.note) }
 
         let ingredients = ingredientEntries
-            .filter { !$0.name.isEmpty || !$0.amountValue.isEmpty }
+            .filter {
+                !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || !$0.amountValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
             .map {
                 IngredientPayload(
                     name: $0.name,
@@ -196,12 +216,14 @@ class BakeEditViewModel: ObservableObject {
                 )
             }
 
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let payload = CreateBakePayload(
             title: title,
             bakeDate: formatter.string(from: bakeDate),
             ingredientsText: nil,
             ingredients: ingredients.isEmpty ? nil : ingredients,
-            notes: notes.isEmpty ? nil : notes,
+            notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
             schedule: schedule.isEmpty ? nil : schedule
         )
 
@@ -232,12 +254,23 @@ class BakeEditViewModel: ObservableObject {
             let bake: Bake
             if let existingId = existingBakeId {
                 bake = try await APIClient.shared.updateBake(id: existingId, payload)
+                SyncManager.shared.clearPendingUpdate(for: existingId)
             } else {
                 bake = try await APIClient.shared.createBake(payload)
             }
 
+            var failedImageData: [Data] = []
             for data in newImageData {
-                _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                do {
+                    _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                } catch {
+                    failedImageData.append(data)
+                }
+            }
+
+            if !failedImageData.isEmpty {
+                SyncManager.shared.queuePhotoUpload(bakeId: bake.id, imageDataItems: failedImageData)
+                savedOffline = true
             }
 
             isSaving = false

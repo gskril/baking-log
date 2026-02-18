@@ -63,9 +63,8 @@ class SyncManager: ObservableObject {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let wasOffline = !self.isOnline
                 self.isOnline = path.status == .satisfied
-                if wasOffline && self.isOnline && self.hasAnyPending {
+                if self.isOnline && self.hasAnyPending {
                     await self.syncPending()
                 }
             }
@@ -178,6 +177,11 @@ class SyncManager: ObservableObject {
         savePendingUpdates()
     }
 
+    func clearPendingUpdate(for bakeId: String) {
+        pendingUpdates.removeAll { $0.bakeId == bakeId }
+        savePendingUpdates()
+    }
+
     // MARK: - Queue: Photo Uploads
 
     func queuePhotoUpload(bakeId: String, imageDataItems: [Data]) {
@@ -200,6 +204,78 @@ class SyncManager: ObservableObject {
     func hasPendingChanges(for bakeId: String) -> Bool {
         pendingUpdates.contains { $0.bakeId == bakeId }
             || pendingPhotoUploads.contains { $0.bakeId == bakeId }
+    }
+
+    func mergedBakeWithPendingChanges(_ bake: Bake) -> Bake {
+        guard let pendingUpdate = pendingUpdates.first(where: { $0.bakeId == bake.id }) else {
+            return bake
+        }
+
+        return bakeFromPayload(
+            id: bake.id,
+            payload: pendingUpdate.payload,
+            createdAt: bake.createdAt,
+            updatedAt: pendingUpdate.queuedAt.ISO8601Format(),
+            photos: bake.photos
+        )
+    }
+
+    func localBakeFromPendingUpdate(bakeId: String) -> Bake? {
+        guard let pendingUpdate = pendingUpdates.first(where: { $0.bakeId == bakeId }) else {
+            return nil
+        }
+
+        return bakeFromPayload(
+            id: bakeId,
+            payload: pendingUpdate.payload,
+            createdAt: pendingUpdate.queuedAt.ISO8601Format(),
+            updatedAt: pendingUpdate.queuedAt.ISO8601Format(),
+            photos: nil
+        )
+    }
+
+    private func bakeFromPayload(
+        id: String,
+        payload: CreateBakePayload,
+        createdAt: String,
+        updatedAt: String,
+        photos: [Photo]?
+    ) -> Bake {
+        let ingredientModels = payload.ingredients?.enumerated().map { index, ingredient in
+            Ingredient(
+                id: "pending-\(index)",
+                bakeId: id,
+                name: ingredient.name,
+                amount: ingredient.amount,
+                note: ingredient.note,
+                sortOrder: index
+            )
+        }
+
+        let scheduleModels = payload.schedule?.enumerated().map { index, step in
+            ScheduleEntry(
+                id: "pending-\(index)",
+                bakeId: id,
+                time: step.time,
+                action: step.action,
+                note: step.note,
+                sortOrder: index
+            )
+        }
+
+        return Bake(
+            id: id,
+            title: payload.title,
+            bakeDate: payload.bakeDate,
+            ingredientsText: payload.ingredientsText,
+            ingredients: ingredientModels,
+            ingredientCount: ingredientModels?.count,
+            notes: payload.notes,
+            schedule: scheduleModels,
+            photos: photos,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
     }
 
     // MARK: - Sync All Queues
