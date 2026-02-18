@@ -9,6 +9,10 @@ worker/     Cloudflare Worker (Hono + D1 + R2)
 ios/        iOS app (SwiftUI) + Widget extension
 ```
 
+## Integration Guide
+
+For website and automation integrations (including developer/agent workflows), see `worker/API_INTEGRATION_GUIDE.md`.
+
 ## Backend Setup
 
 ```bash
