@@ -50,7 +50,7 @@ app.get('/api/export', async (c) => {
         .bind(bake.id)
         .all<Ingredient>(),
       c.env.DB.prepare(
-        'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
+        'SELECT * FROM photos WHERE bake_id = ? ORDER BY sort_order ASC, created_at ASC'
       )
         .bind(bake.id)
         .all<Photo>(),

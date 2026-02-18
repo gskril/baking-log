@@ -27,10 +27,18 @@ app.post('/bakes/:bakeId/photos', async (c) => {
     httpMetadata: { contentType: file.type },
   });
 
-  await c.env.DB.prepare(
-    'INSERT INTO photos (id, bake_id, r2_key, caption) VALUES (?, ?, ?, ?)'
+  // Assign sort_order as max existing + 1
+  const maxRow = await c.env.DB.prepare(
+    'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM photos WHERE bake_id = ?'
   )
-    .bind(id, bakeId, r2Key, caption)
+    .bind(bakeId)
+    .first<{ max_order: number }>();
+  const sortOrder = (maxRow?.max_order ?? -1) + 1;
+
+  await c.env.DB.prepare(
+    'INSERT INTO photos (id, bake_id, r2_key, caption, sort_order) VALUES (?, ?, ?, ?, ?)'
+  )
+    .bind(id, bakeId, r2Key, caption, sortOrder)
     .run();
 
   const photo: Photo = {
@@ -39,6 +47,7 @@ app.post('/bakes/:bakeId/photos', async (c) => {
     r2_key: r2Key,
     url: `/api/photos/${id}/image`,
     caption,
+    sort_order: sortOrder,
     created_at: new Date().toISOString(),
   };
 
@@ -63,6 +72,26 @@ app.get('/photos/:id/image', async (c) => {
   headers.set('Cache-Control', 'public, max-age=31536000, immutable');
 
   return new Response(object.body, { headers });
+});
+
+// Reorder photos for a bake
+app.put('/bakes/:bakeId/photos/reorder', async (c) => {
+  const bakeId = c.req.param('bakeId');
+  const body = await c.req.json<{ photo_ids: string[] }>();
+
+  if (!Array.isArray(body.photo_ids) || body.photo_ids.length === 0) {
+    return c.json({ error: 'photo_ids array required' }, 400);
+  }
+
+  const stmt = c.env.DB.prepare(
+    'UPDATE photos SET sort_order = ? WHERE id = ? AND bake_id = ?'
+  );
+  const batch = body.photo_ids.map((photoId, i) =>
+    stmt.bind(i, photoId, bakeId)
+  );
+  await c.env.DB.batch(batch);
+
+  return c.json({ ok: true });
 });
 
 // Delete a photo

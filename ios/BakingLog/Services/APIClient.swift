@@ -110,6 +110,12 @@ actor APIClient {
         _ = try await URLSession.shared.data(for: req)
     }
 
+    func reorderPhotos(bakeId: String, photoIds: [String]) async throws {
+        let body = try JSONEncoder().encode(["photo_ids": photoIds])
+        let req = request("/api/bakes/\(bakeId)/photos/reorder", method: "PUT", body: body)
+        _ = try await URLSession.shared.data(for: req)
+    }
+
     // MARK: - Webhooks
 
     func listWebhooks() async throws -> [Webhook] {

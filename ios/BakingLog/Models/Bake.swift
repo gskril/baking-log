@@ -96,12 +96,14 @@ struct Photo: Identifiable, Codable, Hashable {
     var r2Key: String
     var url: String?
     var caption: String?
+    var sortOrder: Int
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
         case id, url, caption
         case bakeId = "bake_id"
         case r2Key = "r2_key"
+        case sortOrder = "sort_order"
         case createdAt = "created_at"
     }
 }

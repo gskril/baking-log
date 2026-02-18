@@ -50,6 +50,7 @@ export interface Photo {
   r2_key: string;
   url?: string;
   caption: string | null;
+  sort_order: number;
   created_at: string;
 }
 
