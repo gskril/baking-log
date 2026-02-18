@@ -61,7 +61,6 @@ struct CalculatorView: View {
             Section("Scale") {
                 HStack {
                     TextField("Target weight (g)", text: $vm.targetDoughWeight)
-                        .keyboardType(.decimalPad)
 
                     Button("Dough") {
                         vm.scaleToTarget()
@@ -204,7 +203,6 @@ struct IngredientRow: View {
             HStack {
                 TextField("0", text: $ingredient.weight)
                     .focused(focusedField, equals: .weight(ingredient.id))
-                    .keyboardType(.decimalPad)
                     .font(.body.monospacedDigit())
 
                 Text("g")
@@ -225,6 +223,7 @@ struct IngredientRow: View {
         switch role {
         case .flour: .brown
         case .liquid: .blue
+        case .starter: .orange
         case .other: .secondary
         }
     }

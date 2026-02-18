@@ -276,7 +276,6 @@ struct IngredientEntryRow: View {
                 TextField("Amount", text: $entry.amountValue)
                     .focused(focusedField, equals: .amount(entry.id))
                     .frame(width: 72)
-                    .keyboardType(.decimalPad)
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
                     .multilineTextAlignment(.trailing)

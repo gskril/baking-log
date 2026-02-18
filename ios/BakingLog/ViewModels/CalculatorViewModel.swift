@@ -15,6 +15,7 @@ class CalculatorViewModel: ObservableObject {
         enum Role: String, CaseIterable {
             case flour = "Flour"
             case liquid = "Liquid"
+            case starter = "Starter"
             case other = "Other"
         }
 
@@ -24,11 +25,23 @@ class CalculatorViewModel: ObservableObject {
     }
 
     var totalFlour: Double {
-        ingredients.filter { $0.role == .flour }.reduce(0) { $0 + $1.weightGrams }
+        ingredients.reduce(0) { total, ing in
+            switch ing.role {
+            case .flour: total + ing.weightGrams
+            case .starter: total + ing.weightGrams * 0.5
+            default: total
+            }
+        }
     }
 
     var totalLiquid: Double {
-        ingredients.filter { $0.role == .liquid }.reduce(0) { $0 + $1.weightGrams }
+        ingredients.reduce(0) { total, ing in
+            switch ing.role {
+            case .liquid: total + ing.weightGrams * 1.0
+            case .starter: total + ing.weightGrams * 0.5
+            default: total
+            }
+        }
     }
 
     var totalWeight: Double {
@@ -97,6 +110,7 @@ class CalculatorViewModel: ObservableObject {
         case sourdough = "Sourdough"
         case pizza = "Pizza Dough"
         case focaccia = "Focaccia"
+        case starter = "Starter"
 
         var id: String { rawValue }
 
@@ -104,11 +118,13 @@ class CalculatorViewModel: ObservableObject {
             switch self {
             case .sourdough:
                 return [
-                    Ingredient(name: "Bread flour", weight: "450", role: .flour),
+                    Ingredient(name: "Bread flour", weight: "200", role: .flour),
+                    Ingredient(name: "All purpose flour", weight: "200", role: .flour),
+                    Ingredient(name: "Rye flour", weight: "50", role: .flour),
                     Ingredient(name: "Whole wheat", weight: "50", role: .flour),
-                    Ingredient(name: "Water", weight: "375", role: .liquid),
-                    Ingredient(name: "Starter", weight: "100", role: .other),
-                    Ingredient(name: "Salt", weight: "10", role: .other),
+                    Ingredient(name: "Water", weight: "362.5", role: .liquid),
+                    Ingredient(name: "Starter", weight: "100", role: .starter),
+                    Ingredient(name: "Salt", weight: "11", role: .other),
                 ]
             case .pizza:
                 return [
@@ -126,6 +142,11 @@ class CalculatorViewModel: ObservableObject {
                     Ingredient(name: "Olive oil", weight: "30", role: .other),
                     Ingredient(name: "Yeast", weight: "4", role: .other),
                     Ingredient(name: "Salt", weight: "10", role: .other),
+                ]
+            case .starter:
+                return [
+                    Ingredient(name: "Flour", weight: "50", role: .flour),
+                    Ingredient(name: "Water", weight: "50", role: .liquid),
                 ]
             }
         }

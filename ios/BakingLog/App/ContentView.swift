@@ -17,6 +17,6 @@ struct ContentView: View {
                 Label("Calculator", systemImage: "percent")
             }
         }
-        .scrollDismissesKeyboard(.interactively)
+        .scrollDismissesKeyboard(.immediately)
     }
 }
