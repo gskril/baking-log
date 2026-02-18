@@ -3,7 +3,7 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    private static let defaultBaseURL = "http://localhost:8787"
+    private static let defaultBaseURL = "https://baking-log.gregskril.workers.dev"
     private static let baseURLKey = "api_base_url"
     private static let apiKeyKey = "api_key"
 
@@ -115,6 +115,27 @@ actor APIClient {
     struct PushResult: Codable {
         let ok: Bool
         let pushed: Int
+    }
+
+    func listWebhooks() async throws -> [Webhook] {
+        let req = request("/api/webhooks", contentType: nil)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let response = try decoder.decode(WebhookListResponse.self, from: data)
+        return response.webhooks
+    }
+
+    func createWebhook(url: String, secret: String?) async throws -> Webhook {
+        var payload: [String: String] = ["url": url]
+        if let secret { payload["secret"] = secret }
+        let body = try JSONEncoder().encode(payload)
+        let req = request("/api/webhooks", method: "POST", body: body)
+        let (data, _) = try await URLSession.shared.data(for: req)
+        return try decoder.decode(Webhook.self, from: data)
+    }
+
+    func deleteWebhook(id: String) async throws {
+        let req = request("/api/webhooks/\(id)", method: "DELETE", contentType: nil)
+        _ = try await URLSession.shared.data(for: req)
     }
 
     func pushWebhooks(since: Date? = nil) async throws -> PushResult {

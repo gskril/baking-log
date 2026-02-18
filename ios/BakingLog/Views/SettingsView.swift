@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("api_base_url", store: AppGroup.sharedDefaults)
-    private var apiBaseURL = "http://localhost:8787"
+    private var apiBaseURL = "https://baking-log.gregskril.workers.dev"
 
     @AppStorage("api_key", store: AppGroup.sharedDefaults)
     private var apiKey = ""
@@ -28,6 +28,14 @@ struct SettingsView: View {
                 Text("Authentication")
             } footer: {
                 Text("Only needed if you set API_KEY in your worker config")
+            }
+
+            Section {
+                NavigationLink("Webhooks") {
+                    WebhookSettingsView()
+                }
+            } footer: {
+                Text("Trigger external site rebuilds when you push bake updates")
             }
         }
         .toolbar {
