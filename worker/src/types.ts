@@ -6,7 +6,7 @@ export interface Env {
 
 export interface Bake {
   id: string;
-  title: string;
+  title: string | null;
   bake_date: string;
   ingredients_text: string | null;
   notes: string | null;
@@ -63,7 +63,7 @@ export interface Webhook {
 }
 
 export interface CreateBakeRequest {
-  title: string;
+  title?: string;
   bake_date: string;
   ingredients_text?: string;
   ingredients?: { name: string; amount: string; note?: string }[];

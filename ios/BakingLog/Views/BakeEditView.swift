@@ -206,7 +206,7 @@ struct BakeEditView: View {
                     Button(vm.isEditing ? "Save" : "Create") {
                         submitPrimaryAction()
                     }
-                    .disabled(!hasLoadedInitialData || vm.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isSaving)
+                    .disabled(!hasLoadedInitialData || vm.isSaving)
                 }
             }
             .onAppear {

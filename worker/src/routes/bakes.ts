@@ -76,7 +76,7 @@ app.post('/', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO bakes (id, title, bake_date, ingredients, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
-    .bind(id, body.title, body.bake_date, body.ingredients_text ?? null, body.notes ?? null, now, now)
+    .bind(id, body.title ?? null, body.bake_date, body.ingredients_text ?? null, body.notes ?? null, now, now)
     .run();
 
   if (body.schedule?.length) {

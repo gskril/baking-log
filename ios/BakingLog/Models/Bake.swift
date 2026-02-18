@@ -2,7 +2,7 @@ import Foundation
 
 struct Bake: Identifiable, Codable, Hashable {
     let id: String
-    var title: String
+    var title: String?
     var bakeDate: String
     var ingredientsText: String?
     var ingredients: [Ingredient]?

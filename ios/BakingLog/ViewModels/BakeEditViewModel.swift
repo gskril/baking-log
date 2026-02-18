@@ -80,7 +80,7 @@ class BakeEditViewModel: ObservableObject {
     func loadExisting(_ bake: Bake) {
         existingBakeId = bake.id
         pendingBakeId = nil
-        title = bake.title
+        title = bake.title ?? ""
         notes = bake.notes ?? ""
         existingPhotos = bake.photos ?? []
         pendingExistingImages = []
@@ -115,7 +115,7 @@ class BakeEditViewModel: ObservableObject {
     func loadExistingPending(_ pending: SyncManager.PendingBake) {
         existingBakeId = nil
         pendingBakeId = pending.id
-        title = pending.payload.title
+        title = pending.payload.title ?? ""
         notes = pending.payload.notes ?? ""
         existingPhotos = []
         newImages = []
@@ -218,8 +218,10 @@ class BakeEditViewModel: ObservableObject {
 
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let payload = CreateBakePayload(
-            title: title,
+            title: trimmedTitle.isEmpty ? nil : trimmedTitle,
             bakeDate: formatter.string(from: bakeDate),
             ingredientsText: nil,
             ingredients: ingredients.isEmpty ? nil : ingredients,

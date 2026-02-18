@@ -158,7 +158,7 @@ actor APIClient {
 // MARK: - Payload Types
 
 struct CreateBakePayload: Codable {
-    let title: String
+    let title: String?
     let bakeDate: String
     let ingredientsText: String?
     let ingredients: [IngredientPayload]?

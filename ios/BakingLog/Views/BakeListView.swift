@@ -36,7 +36,7 @@ struct BakeListView: View {
                                 } label: {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text(pending.payload.title)
+                                            Text(pending.payload.title ?? "Untitled Bake")
                                                 .font(.headline)
                                             Text(pending.displayDate)
                                                 .font(.subheadline)
@@ -186,7 +186,7 @@ struct BakeRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(bake.title)
+            Text(bake.title ?? "Untitled Bake")
                 .font(.headline)
             Text(bake.displayDate)
                 .font(.subheadline)
