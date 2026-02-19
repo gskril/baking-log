@@ -4,6 +4,7 @@ import { Env, Bake, BakeWithDetails, ScheduleEntry, Ingredient, Photo } from './
 import bakes from './routes/bakes';
 import photos from './routes/photos';
 import webhooks from './routes/webhooks';
+import { normalizeIngredientRows } from './utils/ingredientAmount';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -58,7 +59,7 @@ app.get('/api/export', async (c) => {
 
     allBakes.push({
       ...bake,
-      ingredients: ingredients.results ?? [],
+      ingredients: normalizeIngredientRows(ingredients.results ?? []),
       schedule: schedule.results ?? [],
       photos: (photos.results ?? []).map((p) => ({
         ...p,
