@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env, Bake, BakeListItem, BakeWithDetails, ScheduleEntry, Ingredient, Photo, CreateBakeRequest, UpdateBakeRequest } from '../types';
+import { normalizeIngredientRows } from '../utils/ingredientAmount';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -59,7 +60,7 @@ app.get('/:id', async (c) => {
 
   const result: BakeWithDetails = {
     ...bake,
-    ingredients: ingredients.results ?? [],
+    ingredients: normalizeIngredientRows(ingredients.results ?? []),
     schedule: schedule.results ?? [],
     photos: photosWithUrls,
   };
