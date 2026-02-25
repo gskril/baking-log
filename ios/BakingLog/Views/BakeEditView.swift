@@ -46,6 +46,17 @@ struct BakeEditView: View {
                 Section {
                     TextField("Title", text: $vm.title)
                         .textInputAutocapitalization(.sentences)
+                        .overlay(alignment: .trailing) {
+                            if !vm.title.isEmpty {
+                                Button {
+                                    vm.title = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
 
                     DatePicker("Start Date", selection: $vm.bakeDate, displayedComponents: .date)
                 }
