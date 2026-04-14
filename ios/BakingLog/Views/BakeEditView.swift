@@ -147,10 +147,11 @@ struct BakeEditView: View {
                                             Task { await vm.deleteExistingPhoto(photo) }
                                         } label: {
                                             Image(systemName: "minus.circle.fill")
-                                                .font(.caption)
+                                                .font(.body)
                                                 .foregroundStyle(.red)
+                                                .background(Circle().fill(.white).padding(2))
                                         }
-                                        .offset(x: 4, y: -4)
+                                        .padding(4)
                                     }
                                 }
                             }
@@ -172,10 +173,11 @@ struct BakeEditView: View {
                                                 vm.newImages.remove(at: i)
                                             } label: {
                                                 Image(systemName: "minus.circle.fill")
-                                                    .font(.caption)
+                                                    .font(.body)
                                                     .foregroundStyle(.red)
+                                                    .background(Circle().fill(.white).padding(2))
                                             }
-                                            .offset(x: 4, y: -4)
+                                            .padding(4)
                                         }
                                 }
                             }
@@ -197,7 +199,7 @@ struct BakeEditView: View {
                 // Notes
                 Section("Notes") {
                     TextEditor(text: $vm.notes)
-                        .frame(minHeight: 80)
+                        .frame(minHeight: 160)
                 }
 
                 if let error = vm.error {
