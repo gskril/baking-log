@@ -180,11 +180,6 @@ struct BakeRow: View {
         if let ingredients = bake.ingredients, !ingredients.isEmpty {
             return "\(ingredients.count) ingredient\(ingredients.count == 1 ? "" : "s")"
         }
-        // Fallback: count lines from legacy text
-        if let text = bake.ingredientsText, !text.isEmpty {
-            let count = text.components(separatedBy: "\n").filter { !$0.isEmpty }.count
-            return "\(count) ingredient\(count == 1 ? "" : "s")"
-        }
         return nil
     }
 

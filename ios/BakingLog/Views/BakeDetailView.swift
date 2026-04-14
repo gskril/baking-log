@@ -144,11 +144,6 @@ struct BakeDetailView: View {
                     }
                 }
             }
-        } else if let text = bake.ingredientsText, !text.isEmpty {
-            SectionBlock(title: "Ingredients") {
-                Text(text)
-                    .font(.body.monospaced())
-            }
         }
     }
 
@@ -415,7 +410,7 @@ struct BakeDetailView: View {
         return CreateBakePayload(
             title: bake.title,
             bakeDate: bake.bakeDate,
-            ingredientsText: bake.ingredientsText,
+
             ingredients: ingredientsPayload,
             notes: notes,
             schedule: schedule

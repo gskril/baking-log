@@ -33,7 +33,7 @@ app.route('/api/webhooks', webhooks);
 // Full export endpoint — useful for pulling data into a personal website
 app.get('/api/export', async (c) => {
   const bakeRows = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, ingredients AS ingredients_text, notes, created_at, updated_at FROM bakes ORDER BY bake_date DESC'
+    'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes ORDER BY bake_date DESC'
   ).all<Bake>();
 
   const allBakes: BakeWithDetails[] = [];

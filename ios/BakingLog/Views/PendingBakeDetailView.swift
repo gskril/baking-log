@@ -286,7 +286,6 @@ struct PendingBakeDetailView: View {
         let updatedPayload = CreateBakePayload(
             title: pending.payload.title,
             bakeDate: pending.payload.bakeDate,
-            ingredientsText: pending.payload.ingredientsText,
             ingredients: pending.payload.ingredients,
             notes: pending.payload.notes,
             schedule: schedulePayload
@@ -345,7 +344,6 @@ struct PendingBakeDetailView: View {
         let updatedPayload = CreateBakePayload(
             title: pending.payload.title,
             bakeDate: pending.payload.bakeDate,
-            ingredientsText: pending.payload.ingredientsText,
             ingredients: pending.payload.ingredients,
             notes: trimmed.isEmpty ? nil : trimmed,
             schedule: pending.payload.schedule

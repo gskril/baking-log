@@ -8,7 +8,7 @@ export interface Bake {
   id: string;
   title: string | null;
   bake_date: string;
-  ingredients_text: string | null;
+
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -64,7 +64,6 @@ export interface Webhook {
 export interface CreateBakeRequest {
   title?: string;
   bake_date: string;
-  ingredients_text?: string;
   ingredients?: { name: string; amount: string; note?: string }[];
   notes?: string;
   schedule?: { time: string; action: string; note?: string }[];

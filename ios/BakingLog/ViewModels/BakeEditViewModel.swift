@@ -94,17 +94,12 @@ class BakeEditViewModel: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         bakeDate = formatter.date(from: bake.bakeDate) ?? .now
 
-        // Load structured ingredients if available, fall back to text
+        // Load structured ingredients
         if let structured = bake.ingredients, !structured.isEmpty {
             ingredientEntries = structured.map {
                 let parsed = Self.parseAmount($0.amount)
                 return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
             }
-        } else if let text = bake.ingredientsText, !text.isEmpty {
-            // Parse legacy text: each line becomes an ingredient with the full line as "name"
-            ingredientEntries = text.components(separatedBy: "\n")
-                .filter { !$0.isEmpty }
-                .map { EditableIngredient(name: $0, amountValue: "", unit: .grams, note: "") }
         }
 
         scheduleEntries = (bake.schedule ?? []).map {
@@ -132,10 +127,6 @@ class BakeEditViewModel: ObservableObject {
                 let parsed = Self.parseAmount($0.amount)
                 return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
             }
-        } else if let text = pending.payload.ingredientsText, !text.isEmpty {
-            ingredientEntries = text.components(separatedBy: "\n")
-                .filter { !$0.isEmpty }
-                .map { EditableIngredient(name: $0, amountValue: "", unit: .grams, note: "") }
         }
 
         if let schedule = pending.payload.schedule, !schedule.isEmpty {
@@ -223,7 +214,7 @@ class BakeEditViewModel: ObservableObject {
         let payload = CreateBakePayload(
             title: trimmedTitle.isEmpty ? nil : trimmedTitle,
             bakeDate: formatter.string(from: bakeDate),
-            ingredientsText: nil,
+
             ingredients: ingredients.isEmpty ? nil : ingredients,
             notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
             schedule: schedule.isEmpty ? nil : schedule
@@ -241,7 +232,7 @@ class BakeEditViewModel: ObservableObject {
                 id: "pending",
                 title: payload.title,
                 bakeDate: payload.bakeDate,
-                ingredientsText: nil,
+    
                 ingredients: nil,
                 ingredientCount: nil,
                 notes: payload.notes,
@@ -287,7 +278,7 @@ class BakeEditViewModel: ObservableObject {
                     id: "pending",
                     title: payload.title,
                     bakeDate: payload.bakeDate,
-                    ingredientsText: nil,
+        
                     ingredients: nil,
                     ingredientCount: nil,
                     notes: payload.notes,
@@ -316,7 +307,7 @@ class BakeEditViewModel: ObservableObject {
                     id: existingId,
                     title: payload.title,
                     bakeDate: payload.bakeDate,
-                    ingredientsText: nil,
+        
                     ingredients: ingredientModels.isEmpty ? nil : ingredientModels,
                     ingredientCount: ingredientModels.isEmpty ? nil : ingredientModels.count,
                     notes: payload.notes,

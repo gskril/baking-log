@@ -267,7 +267,7 @@ class SyncManager: ObservableObject {
             id: id,
             title: payload.title,
             bakeDate: payload.bakeDate,
-            ingredientsText: payload.ingredientsText,
+
             ingredients: ingredientModels,
             ingredientCount: ingredientModels?.count,
             notes: payload.notes,
