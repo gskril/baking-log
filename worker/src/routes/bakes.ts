@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Env, Bake, BakeListItem, BakeWithDetails, ScheduleEntry, Ingredient, Photo, CreateBakeRequest, UpdateBakeRequest } from '../types';
 import { normalizeIngredientRows } from '../utils/ingredientAmount';
+import { normalizeScheduleTime } from '../utils/scheduleTime';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -85,7 +86,7 @@ app.post('/', async (c) => {
       'INSERT INTO schedule_entries (id, bake_id, time, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const batch = body.schedule.map((entry, i) =>
-      stmt.bind(crypto.randomUUID(), id, entry.time, entry.action, entry.note ?? null, i)
+      stmt.bind(crypto.randomUUID(), id, normalizeScheduleTime(entry.time), entry.action, entry.note ?? null, i)
     );
     await c.env.DB.batch(batch);
   }
@@ -174,7 +175,7 @@ app.put('/:id', async (c) => {
         'INSERT INTO schedule_entries (id, bake_id, time, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
       );
       const batch = body.schedule.map((entry, i) =>
-        stmt.bind(crypto.randomUUID(), id, entry.time, entry.action, entry.note ?? null, i)
+        stmt.bind(crypto.randomUUID(), id, normalizeScheduleTime(entry.time), entry.action, entry.note ?? null, i)
       );
       await c.env.DB.batch(batch);
     }
