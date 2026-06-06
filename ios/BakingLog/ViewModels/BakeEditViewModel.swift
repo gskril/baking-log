@@ -330,6 +330,18 @@ class BakeEditViewModel: ObservableObject {
 
     // MARK: - Ingredient Amount Helpers
 
+    /// Matches a unit token (including spelled-out and plural variants) to a
+    /// known `IngredientUnit`. Returns nil for unrecognized tokens.
+    private static func ingredientUnit(from token: String) -> IngredientUnit? {
+        switch token {
+        case "g", "gram", "grams": return .grams
+        case "tsp", "teaspoon", "teaspoons": return .tsp
+        case "tbsp", "tablespoon", "tablespoons": return .tbsp
+        case "cup", "cups": return .cup
+        default: return nil
+        }
+    }
+
     private static func parseAmount(_ rawAmount: String) -> (value: String, unit: IngredientUnit) {
         let trimmed = rawAmount.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -338,45 +350,41 @@ class BakeEditViewModel: ObservableObject {
 
         let lower = trimmed.lowercased()
 
-        if let match = lower.range(of: #"^(\d+(?:\.\d+)?)\s*(g|gram|grams|tsp|tbsp|cup|cups)$"#, options: .regularExpression) {
-            let matched = String(lower[match])
-            let parts = matched.split(whereSeparator: \.isWhitespace)
-            if parts.count == 1 {
-                // Handles values like "90g" where unit is attached to the number.
-                let attached = String(parts[0])
-                if let numberRange = attached.range(of: #"^\d+(?:\.\d+)?"#, options: .regularExpression) {
-                    let number = String(attached[numberRange])
-                    let unitToken = attached.replacingOccurrences(of: #"^\d+(?:\.\d+)?"#, with: "", options: .regularExpression)
-                    switch unitToken {
-                    case "tsp": return (number, .tsp)
-                    case "tbsp": return (number, .tbsp)
-                    case "cup", "cups": return (number, .cup)
-                    default: return (number, .grams)
-                    }
-                }
-            } else if parts.count == 2 {
-                let number = String(parts[0])
-                let unitToken = String(parts[1])
-                switch unitToken {
-                case "tsp": return (number, .tsp)
-                case "tbsp": return (number, .tbsp)
-                case "cup", "cups": return (number, .cup)
-                default: return (number, .grams)
-                }
+        // Pull off a leading number. The decimal portion is optional and a
+        // leading zero is not required, so ".5", "0.5", "4" and "1.67" all match.
+        if let numberRange = lower.range(of: #"^\d*\.?\d+"#, options: .regularExpression) {
+            let number = String(lower[numberRange])
+
+            // Whatever follows the number is the unit. Take the first token so
+            // attached units ("90g"), spaced units ("4 cup") and even already
+            // corrupted values (".5 cup g") all resolve to a single unit.
+            let unitToken = lower[numberRange.upperBound...]
+                .split(whereSeparator: \.isWhitespace)
+                .first
+                .map(String.init) ?? ""
+
+            if unitToken.isEmpty {
+                return (number, .grams)
+            }
+            if let unit = ingredientUnit(from: unitToken) {
+                return (number, unit)
             }
         }
 
-        if lower.range(of: #"^\d+(?:\.\d+)?$"#, options: .regularExpression) != nil {
-            return (trimmed, .grams)
-        }
-
-        // Unknown format: preserve text and default unit to grams.
+        // Unknown format: preserve the original text. formatAmount will not
+        // append a unit to it, so it round-trips unchanged.
         return (trimmed, .grams)
     }
 
     private static func formatAmount(value rawValue: String, unit: IngredientUnit) -> String {
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return "" }
+        // Only append the unit to a bare number. If the value already contains
+        // non-numeric text (an amount we couldn't fully parse), leave it as-is
+        // so we never produce strings like ".5 cup g".
+        guard value.range(of: #"^\d*\.?\d+$"#, options: .regularExpression) != nil else {
+            return value
+        }
         return "\(value) \(unit.rawValue)"
     }
 }
