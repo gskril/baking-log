@@ -198,9 +198,10 @@ struct BakeDetailView: View {
         let notesChanged = editedNotes != currentNotes
 
         SectionBlock(title: "Notes") {
-            TextEditor(text: $editedNotes)
-                .frame(minHeight: 100)
-                .padding(4)
+            TextField("Notes", text: $editedNotes, axis: .vertical)
+                .lineLimit(4...)
+                .textInputAutocapitalization(.sentences)
+                .padding(8)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(.quaternary)

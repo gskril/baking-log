@@ -198,8 +198,9 @@ struct BakeEditView: View {
 
                 // Notes
                 Section("Notes") {
-                    TextEditor(text: $vm.notes)
-                        .frame(minHeight: 160)
+                    TextField("Notes", text: $vm.notes, axis: .vertical)
+                        .lineLimit(6...)
+                        .textInputAutocapitalization(.sentences)
                 }
 
                 if let error = vm.error {
