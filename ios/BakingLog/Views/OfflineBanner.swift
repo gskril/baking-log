@@ -1,14 +1,15 @@
 import SwiftUI
 
-/// Slides a "No Internet Connection" bar in from the top edge whenever
-/// connectivity drops. Applied to the root TabView and to sheets, which
-/// present above it.
+/// Floats a "No Internet Connection" capsule in from the top edge whenever
+/// connectivity drops. An overlay rather than a safe-area inset so it never
+/// reflows the navigation bar or tints the status bar. Applied to the root
+/// TabView and to sheets, which present above it.
 struct OfflineBannerModifier: ViewModifier {
     @ObservedObject private var network = NetworkMonitor.shared
 
     func body(content: Content) -> some View {
         content
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .overlay(alignment: .top) {
                 if !network.isOnline {
                     HStack(spacing: 6) {
                         Image(systemName: "wifi.slash")
@@ -16,9 +17,11 @@ struct OfflineBannerModifier: ViewModifier {
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(.orange)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.orange, in: Capsule())
+                    .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                    .padding(.top, 4)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
