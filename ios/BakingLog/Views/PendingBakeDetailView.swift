@@ -38,6 +38,9 @@ struct PendingBakeDetailView: View {
                     }
                     .padding()
                 }
+                // Keep the keyboard up while scrolling to see the notes field;
+                // dragging down onto the keyboard still dismisses it.
+                .scrollDismissesKeyboard(.interactively)
             } else {
                 ContentUnavailableView {
                     Label("Bake Synced", systemImage: "checkmark.circle")
@@ -209,9 +212,11 @@ struct PendingBakeDetailView: View {
         let notesChanged = editedNotes != currentNotes
 
         SectionBlock(title: "Notes") {
-            TextEditor(text: $editedNotes)
-                .frame(minHeight: 100)
-                .padding(4)
+            // Grows with content so the caret never scrolls out of sight
+            // inside a fixed-height box.
+            TextField("Notes", text: $editedNotes, axis: .vertical)
+                .lineLimit(4...)
+                .padding(8)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(.quaternary)
