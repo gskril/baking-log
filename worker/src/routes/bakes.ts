@@ -11,39 +11,43 @@ function withSeconds(occursAt: string | null | undefined): string | null {
   return occursAt.length === 16 ? `${occursAt}:00` : occursAt;
 }
 
-async function replaceScheduleAndIngredients(
+/**
+ * Statements that replace a bake's schedule and ingredients. Returned (not run)
+ * so callers can bundle them with other writes into a single D1 batch.
+ */
+function replaceScheduleAndIngredientStatements(
   db: D1Database,
   bakeId: string,
   schedule: CreateBakeRequest['schedule'],
   ingredients: CreateBakeRequest['ingredients']
-) {
+): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
+
   if (schedule) {
-    await db.prepare('DELETE FROM schedule_entries WHERE bake_id = ?').bind(bakeId).run();
-    if (schedule.length) {
-      const stmt = db.prepare(
-        'INSERT INTO schedule_entries (id, bake_id, occurs_at, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+    statements.push(db.prepare('DELETE FROM schedule_entries WHERE bake_id = ?').bind(bakeId));
+    const stmt = db.prepare(
+      'INSERT INTO schedule_entries (id, bake_id, occurs_at, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    schedule.forEach((entry, i) => {
+      statements.push(
+        stmt.bind(crypto.randomUUID(), bakeId, withSeconds(entry.occurs_at), entry.action, entry.note ?? null, i)
       );
-      await db.batch(
-        schedule.map((entry, i) =>
-          stmt.bind(crypto.randomUUID(), bakeId, withSeconds(entry.occurs_at), entry.action, entry.note ?? null, i)
-        )
-      );
-    }
+    });
   }
 
   if (ingredients) {
-    await db.prepare('DELETE FROM ingredients WHERE bake_id = ?').bind(bakeId).run();
-    if (ingredients.length) {
-      const stmt = db.prepare(
-        'INSERT INTO ingredients (id, bake_id, name, amount_value, unit, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    statements.push(db.prepare('DELETE FROM ingredients WHERE bake_id = ?').bind(bakeId));
+    const stmt = db.prepare(
+      'INSERT INTO ingredients (id, bake_id, name, amount_value, unit, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    ingredients.forEach((ing, i) => {
+      statements.push(
+        stmt.bind(crypto.randomUUID(), bakeId, ing.name, ing.amount_value ?? null, ing.unit ?? null, ing.note ?? null, i)
       );
-      await db.batch(
-        ingredients.map((ing, i) =>
-          stmt.bind(crypto.randomUUID(), bakeId, ing.name, ing.amount_value ?? null, ing.unit ?? null, ing.note ?? null, i)
-        )
-      );
-    }
+    });
   }
+
+  return statements;
 }
 
 // List all bakes
@@ -81,13 +85,12 @@ app.post('/', async (c) => {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await c.env.DB.prepare(
-    'INSERT INTO bakes (id, title, bake_date, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  )
-    .bind(id, body.title ?? null, body.bake_date, body.notes ?? null, now, now)
-    .run();
-
-  await replaceScheduleAndIngredients(c.env.DB, id, body.schedule, body.ingredients);
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'INSERT INTO bakes (id, title, bake_date, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(id, body.title ?? null, body.bake_date, body.notes ?? null, now, now),
+    ...replaceScheduleAndIngredientStatements(c.env.DB, id, body.schedule, body.ingredients),
+  ]);
 
   const result = await getBakeWithDetails(c.env.DB, id);
   return c.json(result, 201);
@@ -100,25 +103,18 @@ app.put('/:id', async (c) => {
   const invalid = validateBakeRequest(body, false);
   if (invalid) return c.json({ error: invalid }, 400);
 
-  const existing = await c.env.DB.prepare('SELECT * FROM bakes WHERE id = ?')
+  const existing = await c.env.DB.prepare('SELECT id FROM bakes WHERE id = ?')
     .bind(id)
-    .first<{ id: string; title: string; bake_date: string; notes: string | null }>();
+    .first<{ id: string }>();
 
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  await c.env.DB.prepare(
-    'UPDATE bakes SET title = ?, bake_date = ?, notes = ?, updated_at = ? WHERE id = ?'
-  )
-    .bind(
-      body.title ?? existing.title,
-      body.bake_date ?? existing.bake_date,
-      body.notes ?? existing.notes,
-      new Date().toISOString(),
-      id
-    )
-    .run();
-
-  await replaceScheduleAndIngredients(c.env.DB, id, body.schedule, body.ingredients);
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'UPDATE bakes SET title = COALESCE(?, title), bake_date = COALESCE(?, bake_date), notes = COALESCE(?, notes), updated_at = ? WHERE id = ?'
+    ).bind(body.title ?? null, body.bake_date ?? null, body.notes ?? null, new Date().toISOString(), id),
+    ...replaceScheduleAndIngredientStatements(c.env.DB, id, body.schedule, body.ingredients),
+  ]);
 
   const result = await getBakeWithDetails(c.env.DB, id);
   return c.json(result);
@@ -128,19 +124,25 @@ app.put('/:id', async (c) => {
 app.delete('/:id', async (c) => {
   const id = c.req.param('id');
 
-  const bake = await c.env.DB.prepare('SELECT * FROM bakes WHERE id = ?')
-    .bind(id)
-    .first();
+  const [bakeRes, photosRes] = await c.env.DB.batch([
+    c.env.DB.prepare('SELECT id FROM bakes WHERE id = ?').bind(id),
+    c.env.DB.prepare('SELECT id, r2_key FROM photos WHERE bake_id = ?').bind(id),
+  ]);
 
-  if (!bake) return c.json({ error: 'Not found' }, 404);
+  if (!bakeRes.results?.length) return c.json({ error: 'Not found' }, 404);
 
-  // Delete associated photos from R2
-  const photos = await c.env.DB.prepare('SELECT * FROM photos WHERE bake_id = ?')
-    .bind(id)
-    .all<Photo>();
+  const photos = (photosRes.results ?? []) as Pick<Photo, 'id' | 'r2_key'>[];
 
-  for (const photo of photos.results ?? []) {
-    await c.env.PHOTOS.delete(photo.r2_key);
+  // Delete associated photos from R2 (bulk) and purge their edge-cached copies
+  if (photos.length) {
+    await c.env.PHOTOS.delete(photos.map((p) => p.r2_key));
+    c.executionCtx.waitUntil(
+      Promise.all(
+        photos.map((p) =>
+          caches.default.delete(new Request(new URL(`/api/photos/${p.id}/image`, c.req.url)))
+        )
+      )
+    );
   }
 
   // Explicit deletes — don't rely on CASCADE since D1 may not enforce foreign keys

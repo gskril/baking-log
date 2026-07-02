@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, Bake, BakeWithDetails } from './types';
+import { Env, Bake, BakeWithDetails, Ingredient, Photo, ScheduleEntry } from './types';
 import bakes from './routes/bakes';
 import photos from './routes/photos';
 import webhooks from './routes/webhooks';
-import { getBakeWithDetails } from './db/queries';
+import { withPhotoURL } from './db/queries';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -32,16 +32,37 @@ app.route('/api/webhooks', webhooks);
 
 // Full export endpoint — useful for pulling data into a personal website
 app.get('/api/export', async (c) => {
-  const bakeRows = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes ORDER BY bake_date DESC'
-  ).all<Bake>();
+  // Fetch everything in one D1 batch and group in memory — avoids one
+  // round trip per bake
+  const [bakeRes, scheduleRes, ingredientRes, photoRes] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes ORDER BY bake_date DESC'
+    ),
+    c.env.DB.prepare('SELECT * FROM schedule_entries ORDER BY occurs_at ASC, sort_order ASC'),
+    c.env.DB.prepare('SELECT * FROM ingredients ORDER BY sort_order ASC'),
+    c.env.DB.prepare('SELECT * FROM photos ORDER BY created_at ASC'),
+  ]);
 
-  const allBakes: BakeWithDetails[] = [];
+  const groupByBake = <T extends { bake_id: string }>(rows: T[]) => {
+    const map = new Map<string, T[]>();
+    for (const row of rows) {
+      const list = map.get(row.bake_id);
+      if (list) list.push(row);
+      else map.set(row.bake_id, [row]);
+    }
+    return map;
+  };
 
-  for (const bake of bakeRows.results ?? []) {
-    const details = await getBakeWithDetails(c.env.DB, bake.id);
-    if (details) allBakes.push(details);
-  }
+  const schedulesByBake = groupByBake((scheduleRes.results ?? []) as ScheduleEntry[]);
+  const ingredientsByBake = groupByBake((ingredientRes.results ?? []) as Ingredient[]);
+  const photosByBake = groupByBake((photoRes.results ?? []) as Photo[]);
+
+  const allBakes: BakeWithDetails[] = ((bakeRes.results ?? []) as Bake[]).map((bake) => ({
+    ...bake,
+    ingredients: ingredientsByBake.get(bake.id) ?? [],
+    schedule: schedulesByBake.get(bake.id) ?? [],
+    photos: (photosByBake.get(bake.id) ?? []).map(withPhotoURL),
+  }));
 
   return c.json({ bakes: allBakes, exported_at: new Date().toISOString() });
 });
