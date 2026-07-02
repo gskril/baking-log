@@ -62,7 +62,6 @@ export interface Webhook {
   id: string;
   url: string;
   secret: string | null;
-  active: number;
   created_at: string;
 }
 

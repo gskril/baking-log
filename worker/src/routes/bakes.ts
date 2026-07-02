@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Env, BakeListItem, CreateBakeRequest, UpdateBakeRequest, Photo } from '../types';
 import { getBakeWithDetails } from '../db/queries';
-import { validateBakeRequest } from '../utils/validate';
+import { parseJsonBody, validateBakeRequest } from '../utils/validate';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -78,7 +78,8 @@ app.get('/:id', async (c) => {
 
 // Create a new bake
 app.post('/', async (c) => {
-  const body = await c.req.json<CreateBakeRequest>();
+  const body = await parseJsonBody<CreateBakeRequest>(c.req.raw);
+  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
   const invalid = validateBakeRequest(body, true);
   if (invalid) return c.json({ error: invalid }, 400);
 
@@ -99,7 +100,8 @@ app.post('/', async (c) => {
 // Update a bake
 app.put('/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<UpdateBakeRequest>();
+  const body = await parseJsonBody<UpdateBakeRequest>(c.req.raw);
+  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
   const invalid = validateBakeRequest(body, false);
   if (invalid) return c.json({ error: invalid }, 400);
 
@@ -109,10 +111,28 @@ app.put('/:id', async (c) => {
 
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
+  // A key present with an explicit null clears the field; an absent key
+  // leaves it unchanged. (COALESCE can't tell those apart.)
+  const sets: string[] = [];
+  const values: (string | null)[] = [];
+  if ('title' in body) {
+    sets.push('title = ?');
+    values.push(body.title ?? null);
+  }
+  if ('bake_date' in body) {
+    // Validated above: present bake_date is always a YYYY-MM-DD string.
+    sets.push('bake_date = ?');
+    values.push(body.bake_date!);
+  }
+  if ('notes' in body) {
+    sets.push('notes = ?');
+    values.push(body.notes ?? null);
+  }
+  sets.push('updated_at = ?');
+  values.push(new Date().toISOString());
+
   await c.env.DB.batch([
-    c.env.DB.prepare(
-      'UPDATE bakes SET title = COALESCE(?, title), bake_date = COALESCE(?, bake_date), notes = COALESCE(?, notes), updated_at = ? WHERE id = ?'
-    ).bind(body.title ?? null, body.bake_date ?? null, body.notes ?? null, new Date().toISOString(), id),
+    c.env.DB.prepare(`UPDATE bakes SET ${sets.join(', ')} WHERE id = ?`).bind(...values, id),
     ...replaceScheduleAndIngredientStatements(c.env.DB, id, body.schedule, body.ingredients),
   ]);
 

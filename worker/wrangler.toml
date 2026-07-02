@@ -17,4 +17,4 @@ bucket_name = "baking-log"
 mode = "smart"
 
 [observability]
-enabled = false
+enabled = true

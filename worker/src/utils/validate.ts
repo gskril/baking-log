@@ -3,6 +3,19 @@ import { CreateBakeRequest, INGREDIENT_UNITS } from '../types';
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const OCCURS_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
+/**
+ * Parses a JSON request body, returning null when it is malformed (or not an
+ * object) so handlers can respond 400 instead of letting Hono 500.
+ */
+export async function parseJsonBody<T extends object>(req: Request): Promise<T | null> {
+  try {
+    const body: unknown = await req.json();
+    return typeof body === 'object' && body !== null ? (body as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Returns an error message, or null if the request is valid. */
 export function validateBakeRequest(body: Partial<CreateBakeRequest>, requireDate: boolean): string | null {
   if (body.bake_date === undefined) {

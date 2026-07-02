@@ -3,6 +3,19 @@ import { Env, Photo } from '../types';
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Allowed upload content types → file extension used for the R2 key. The
+// extension is derived from the validated content type — never from the
+// client-supplied filename, which could contain `/` or other junk.
+const ALLOWED_PHOTO_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/heic': 'heic',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
+
 // Upload a photo for a bake
 app.post('/bakes/:bakeId/photos', async (c) => {
   const bakeId = c.req.param('bakeId');
@@ -19,8 +32,19 @@ app.post('/bakes/:bakeId/photos', async (c) => {
 
   if (!file) return c.json({ error: 'No photo provided' }, 400);
 
+  const ext = ALLOWED_PHOTO_TYPES[file.type];
+  if (!ext) {
+    return c.json(
+      { error: `photo content type must be one of ${Object.keys(ALLOWED_PHOTO_TYPES).join(', ')}` },
+      400
+    );
+  }
+
+  if (file.size > MAX_PHOTO_BYTES) {
+    return c.json({ error: 'photo must be 10 MB or smaller' }, 413);
+  }
+
   const id = crypto.randomUUID();
-  const ext = file.name.split('.').pop() ?? 'jpg';
   const r2Key = `bakes/${bakeId}/${id}.${ext}`;
   const now = new Date().toISOString();
 

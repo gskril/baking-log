@@ -3,13 +3,12 @@ import Foundation
 struct Webhook: Identifiable, Codable {
     let id: String
     let url: String
-    let events: String
-    let secret: String?
-    let active: Int
+    let hasSecret: Bool
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, url, events, secret, active
+        case id, url
+        case hasSecret = "has_secret"
         case createdAt = "created_at"
     }
 }
