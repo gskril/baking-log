@@ -13,10 +13,13 @@ struct ContentView: View {
             NavigationStack {
                 CalculatorView()
             }
+            // Immediate dismissal only suits the calculator's single-line
+            // number fields; on bake screens it makes multi-line notes
+            // impossible to edit (any scroll hides the keyboard).
+            .scrollDismissesKeyboard(.immediately)
             .tabItem {
                 Label("Calculator", systemImage: "percent")
             }
         }
-        .scrollDismissesKeyboard(.immediately)
     }
 }

@@ -198,8 +198,12 @@ struct BakeEditView: View {
 
                 // Notes
                 Section("Notes") {
-                    TextEditor(text: $vm.notes)
-                        .frame(minHeight: 160)
+                    // Vertical-axis TextField grows with its content (unlike a
+                    // fixed-height TextEditor, which scrolls internally and lets
+                    // the caret drift out of view under the keyboard).
+                    TextField("Notes", text: $vm.notes, axis: .vertical)
+                        .lineLimit(7...)
+                        .textInputAutocapitalization(.sentences)
                 }
 
                 if let error = vm.error {
@@ -211,6 +215,9 @@ struct BakeEditView: View {
             }
             .navigationTitle(vm.isEditing ? "Edit Bake" : "New Bake")
             .navigationBarTitleDisplayMode(.inline)
+            // Only dismiss the keyboard when dragging down onto it — scrolling
+            // up to see more of a field should never hide the keyboard.
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -220,6 +227,13 @@ struct BakeEditView: View {
                         submitPrimaryAction()
                     }
                     .disabled(!hasLoadedInitialData || vm.isSaving)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedIngredientField = nil
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
                 }
             }
             .onAppear {
