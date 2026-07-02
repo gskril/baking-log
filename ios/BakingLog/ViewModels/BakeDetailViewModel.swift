@@ -139,7 +139,11 @@ final class BakeDetailViewModel: ObservableObject {
                     failureCount += 1
                     continue
                 }
-                let photo = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                // Downsample + re-encode as JPEG off the main actor so the
+                // upload is small enough for the 15s request timeout and the
+                // stored bytes actually match APIClient's image/jpeg label.
+                let jpegData = try await ImageProcessing.downsampledJPEGData(from: data)
+                let photo = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: jpegData)
 
                 var photos = updatedBake.photos ?? []
                 photos.append(photo)
