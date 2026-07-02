@@ -1,9 +1,7 @@
 import { Env, Webhook } from '../types';
 
 export async function fireWebhooks(env: Env) {
-  const webhooks = await env.DB.prepare(
-    'SELECT * FROM webhooks WHERE active = 1'
-  ).all<Webhook>();
+  const webhooks = await env.DB.prepare('SELECT * FROM webhooks').all<Webhook>();
 
   const deliveries = (webhooks.results ?? []).map(async (wh) => {
     const body = JSON.stringify({ event: 'bakes.updated', timestamp: new Date().toISOString() });
@@ -29,9 +27,10 @@ export async function fireWebhooks(env: Env) {
     }
 
     try {
-      await fetch(wh.url, { method: 'POST', headers, body });
-    } catch {
-      // Silently fail
+      // Time out hung receivers so they don't hold the waitUntil promise open.
+      await fetch(wh.url, { method: 'POST', headers, body, signal: AbortSignal.timeout(10_000) });
+    } catch (err) {
+      console.error(`Webhook delivery failed (id=${wh.id}, url=${wh.url}):`, err);
     }
   });
 

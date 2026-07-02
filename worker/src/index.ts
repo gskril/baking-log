@@ -8,6 +8,19 @@ import { withPhotoURL } from './db/queries';
 
 const app = new Hono<{ Bindings: Env }>();
 
+/**
+ * Constant-time string comparison. Digesting both values first sidesteps
+ * timingSafeEqual's equal-length requirement without leaking length info.
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [digestA, digestB] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(a)),
+    crypto.subtle.digest('SHA-256', encoder.encode(b)),
+  ]);
+  return crypto.subtle.timingSafeEqual(digestA, digestB);
+}
+
 // CORS for iOS app and website
 app.use('*', cors());
 
@@ -17,8 +30,12 @@ app.use('/api/*', async (c, next) => {
   if (c.req.path.match(/^\/api\/photos\/[^/]+\/image$/)) return next();
   const apiKey = c.env.API_KEY;
   if (apiKey) {
-    const provided = c.req.header('Authorization')?.replace('Bearer ', '');
-    if (provided !== apiKey) {
+    const authorization = c.req.header('Authorization');
+    const prefix = 'Bearer ';
+    if (
+      !authorization?.startsWith(prefix) ||
+      !(await timingSafeEqual(authorization.slice(prefix.length), apiKey))
+    ) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
   }

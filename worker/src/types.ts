@@ -62,16 +62,8 @@ export interface Webhook {
   id: string;
   url: string;
   secret: string | null;
-  active: number;
   created_at: string;
 }
 
-export interface CreateBakeRequest {
-  title?: string;
-  bake_date: string;
-  ingredients?: { name: string; amount_value?: number | null; unit?: string | null; note?: string }[];
-  notes?: string;
-  schedule?: { occurs_at?: string | null; action: string; note?: string }[];
-}
-
-export interface UpdateBakeRequest extends Partial<CreateBakeRequest> {}
+// Request payload types (CreateBakeRequest, UpdateBakeRequest) are inferred
+// from the Zod schemas in utils/validate.ts.

@@ -23,7 +23,7 @@ struct WebhookSettingsView: View {
                         Text(webhook.url)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        if webhook.secret != nil {
+                        if webhook.hasSecret {
                             Text("Signed")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
