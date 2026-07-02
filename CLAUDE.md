@@ -12,7 +12,7 @@ ios/             iOS app (SwiftUI, XcodeGen)
 ### Backend (worker/)
 
 - **Framework**: Hono on Cloudflare Workers
-- **Database**: D1 (SQLite) — schema in `src/db/schema.sql`
+- **Database**: D1 (SQLite) — schema via migrations in `migrations/*.sql`
 - **Storage**: R2 bucket for photos
 - **Auth**: Optional `API_KEY` env var → Bearer token middleware
 - **Webhooks**: Manual push only — `POST /api/webhooks/push` triggers delivery with optional HMAC-SHA256 signing. CRUD operations do NOT auto-fire webhooks.

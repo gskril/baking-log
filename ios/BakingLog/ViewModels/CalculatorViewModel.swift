@@ -55,9 +55,6 @@ class CalculatorViewModel: ObservableObject {
 
     func bakersPercentage(for ingredient: Ingredient) -> Double {
         guard totalFlour > 0 else { return 0 }
-        if ingredient.role == .flour && ingredients.filter({ $0.role == .flour }).count == 1 {
-            return 100
-        }
         return (ingredient.weightGrams / totalFlour) * 100
     }
 
@@ -89,7 +86,6 @@ class CalculatorViewModel: ObservableObject {
             let scaled = ingredients[i].weightGrams * factor
             ingredients[i].weight = formatWeight(scaled)
         }
-        targetDoughWeight = ""
     }
 
     func loadPreset(_ preset: Preset) {
