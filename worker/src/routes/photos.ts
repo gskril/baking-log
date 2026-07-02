@@ -22,15 +22,16 @@ app.post('/bakes/:bakeId/photos', async (c) => {
   const id = crypto.randomUUID();
   const ext = file.name.split('.').pop() ?? 'jpg';
   const r2Key = `bakes/${bakeId}/${id}.${ext}`;
+  const now = new Date().toISOString();
 
   await c.env.PHOTOS.put(r2Key, file.stream(), {
     httpMetadata: { contentType: file.type },
   });
 
   await c.env.DB.prepare(
-    'INSERT INTO photos (id, bake_id, r2_key, caption) VALUES (?, ?, ?, ?)'
+    'INSERT INTO photos (id, bake_id, r2_key, caption, created_at) VALUES (?, ?, ?, ?, ?)'
   )
-    .bind(id, bakeId, r2Key, caption)
+    .bind(id, bakeId, r2Key, caption, now)
     .run();
 
   const photo: Photo = {
@@ -39,7 +40,7 @@ app.post('/bakes/:bakeId/photos', async (c) => {
     r2_key: r2Key,
     url: `/api/photos/${id}/image`,
     caption,
-    created_at: new Date().toISOString(),
+    created_at: now,
   };
 
   return c.json(photo, 201);

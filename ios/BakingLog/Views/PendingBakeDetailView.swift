@@ -133,7 +133,7 @@ struct PendingBakeDetailView: View {
                             .font(.body)
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(ingredient.amount)
+                            Text(ingredient.displayAmount)
                                 .font(.body.monospaced())
                                 .foregroundStyle(.secondary)
                             if let note = ingredient.note, !note.isEmpty {
@@ -154,9 +154,17 @@ struct PendingBakeDetailView: View {
     private func scheduleSection(_ pending: SyncManager.PendingBake) -> some View {
         SectionBlock(title: "Schedule") {
             if let schedule = pending.payload.schedule, !schedule.isEmpty {
-                ForEach(Array(schedule.enumerated()), id: \.offset) { _, entry in
+                let dates = schedule.map(\.date)
+                ForEach(Array(schedule.enumerated()), id: \.offset) { index, entry in
+                    if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
+                        Text(dayLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.top, index == 0 ? 0 : 6)
+                    }
                     HStack(alignment: .top, spacing: 12) {
-                        Text(entry.time)
+                        Text(Formatters.displayTime(entry.date))
                             .font(.subheadline.monospaced())
                             .foregroundStyle(.secondary)
                             .frame(width: 80, alignment: .trailing)
@@ -178,6 +186,8 @@ struct PendingBakeDetailView: View {
                 inlineAddStepForm()
             } else {
                 Button {
+                    // Default to the last step's time so the new step lands on the right day.
+                    newStepTime = pending.payload.schedule?.last?.date ?? .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
@@ -232,16 +242,14 @@ struct PendingBakeDetailView: View {
         VStack(spacing: 10) {
             Divider()
 
-            HStack {
-                DatePicker("", selection: $newStepTime, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .frame(width: 100)
+            TextField("Action", text: $newStepAction)
+                .focused($isNewStepActionFocused)
+                .textInputAutocapitalization(.sentences)
+                .textFieldStyle(.roundedBorder)
 
-                TextField("Action", text: $newStepAction)
-                    .focused($isNewStepActionFocused)
-                    .textInputAutocapitalization(.sentences)
-                    .textFieldStyle(.roundedBorder)
-            }
+            DatePicker("", selection: $newStepTime, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $newStepNote)
                 .font(.caption)
@@ -268,8 +276,6 @@ struct PendingBakeDetailView: View {
     private func saveNewStep() {
         guard let pending else { return }
 
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "h:mm a"
         let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedAction.isEmpty else { return }
@@ -277,7 +283,7 @@ struct PendingBakeDetailView: View {
         var schedulePayload = pending.payload.schedule ?? []
         schedulePayload.append(
             ScheduleEntryPayload(
-                time: timeFormatter.string(from: newStepTime),
+                occursAt: Formatters.isoDateTime.string(from: newStepTime),
                 action: trimmedAction,
                 note: trimmedNote.isEmpty ? nil : trimmedNote
             )

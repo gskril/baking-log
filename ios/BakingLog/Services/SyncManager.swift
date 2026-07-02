@@ -21,14 +21,7 @@ class SyncManager: ObservableObject {
         let createdLocally: Date
 
         var displayDate: String {
-            let parts = payload.bakeDate.split(separator: "-")
-            guard parts.count == 3,
-                  let month = Int(parts[1]),
-                  let day = Int(parts[2]) else {
-                return payload.bakeDate
-            }
-            let year = String(parts[0].suffix(2))
-            return "\(month)/\(day)/\(year)"
+            Formatters.displayDay(payload.bakeDate)
         }
     }
 
@@ -246,7 +239,8 @@ class SyncManager: ObservableObject {
                 id: "pending-\(index)",
                 bakeId: id,
                 name: ingredient.name,
-                amount: ingredient.amount,
+                amountValue: ingredient.amountValue,
+                unit: ingredient.unit,
                 note: ingredient.note,
                 sortOrder: index
             )
@@ -256,7 +250,7 @@ class SyncManager: ObservableObject {
             ScheduleEntry(
                 id: "pending-\(index)",
                 bakeId: id,
-                time: step.time,
+                occursAt: step.occursAt,
                 action: step.action,
                 note: step.note,
                 sortOrder: index

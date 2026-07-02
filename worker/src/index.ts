@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { Env, Bake, BakeWithDetails, ScheduleEntry, Ingredient, Photo } from './types';
+import { Env, Bake, BakeWithDetails } from './types';
 import bakes from './routes/bakes';
 import photos from './routes/photos';
 import webhooks from './routes/webhooks';
-import { normalizeIngredientRows } from './utils/ingredientAmount';
+import { getBakeWithDetails } from './db/queries';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -39,33 +39,8 @@ app.get('/api/export', async (c) => {
   const allBakes: BakeWithDetails[] = [];
 
   for (const bake of bakeRows.results ?? []) {
-    const [schedule, ingredients, photos] = await Promise.all([
-      c.env.DB.prepare(
-        'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
-      )
-        .bind(bake.id)
-        .all<ScheduleEntry>(),
-      c.env.DB.prepare(
-        'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
-      )
-        .bind(bake.id)
-        .all<Ingredient>(),
-      c.env.DB.prepare(
-        'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
-      )
-        .bind(bake.id)
-        .all<Photo>(),
-    ]);
-
-    allBakes.push({
-      ...bake,
-      ingredients: normalizeIngredientRows(ingredients.results ?? []),
-      schedule: schedule.results ?? [],
-      photos: (photos.results ?? []).map((p) => ({
-        ...p,
-        url: `/api/photos/${p.id}/image`,
-      })),
-    });
+    const details = await getBakeWithDetails(c.env.DB, bake.id);
+    if (details) allBakes.push(details);
   }
 
   return c.json({ bakes: allBakes, exported_at: new Date().toISOString() });
