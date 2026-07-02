@@ -22,7 +22,11 @@ class BakeListViewModel: ObservableObject {
             bakes = page
             hasMore = page.count == pageSize
         } catch {
-            self.error = error.localizedDescription
+            // .task {} cancels the in-flight request on disappear — don't
+            // surface cancellation as a user-facing error.
+            if !error.isCancellation {
+                self.error = error.localizedDescription
+            }
         }
         isLoading = false
     }

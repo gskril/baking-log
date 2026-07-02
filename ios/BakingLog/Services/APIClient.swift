@@ -1,5 +1,35 @@
 import Foundation
 
+/// Typed errors for API requests, with user-readable descriptions.
+enum APIError: LocalizedError {
+    /// The base URL from Settings (plus path) doesn't parse as a URL.
+    case invalidURL
+    /// The server returned a non-2xx status. `message` is the worker's
+    /// `{"error": string}` body when present.
+    case httpError(status: Int, message: String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "Invalid API URL — check Settings."
+        case .httpError(let status, let message):
+            let reason = message ?? HTTPURLResponse.localizedString(forStatusCode: status).capitalized
+            return "\(reason) (\(status))"
+        }
+    }
+}
+
+extension Error {
+    /// True for task-cancellation errors (e.g. `.task {}` cancelling an
+    /// in-flight request on disappear) that shouldn't surface as user-facing
+    /// failures.
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        if let urlError = self as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+}
+
 actor APIClient {
     static let shared = APIClient()
 
@@ -29,10 +59,10 @@ actor APIClient {
         return URLSession(configuration: config)
     }()
 
-    private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String? = "application/json") -> URLRequest {
+    private func request(_ path: String, method: String = "GET", body: Data? = nil, contentType: String? = "application/json") throws -> URLRequest {
         guard let url = URL(string: "\(baseURLString)\(path)") else {
-            // Fallback: shouldn't happen with valid settings, but avoids a crash
-            fatalError("Invalid API URL: \(baseURLString)\(path)")
+            // The base URL is free-text user input from Settings — never crash on it.
+            throw APIError.invalidURL
         }
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -46,38 +76,58 @@ actor APIClient {
         return req
     }
 
+    /// Shape of the worker's error responses (see worker/src/routes/*.ts).
+    private struct APIErrorBody: Decodable {
+        let error: String
+    }
+
+    /// Throws a readable `APIError` for non-2xx responses, decoding the
+    /// worker's `{"error": string}` body when present.
+    private func checkResponse(_ data: Data, _ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200...299).contains(http.statusCode) else {
+            let message = (try? decoder.decode(APIErrorBody.self, from: data))?.error
+            throw APIError.httpError(status: http.statusCode, message: message)
+        }
+    }
+
     // MARK: - Bakes
 
     func listBakes(limit: Int = 50, offset: Int = 0) async throws -> [Bake] {
-        let req = request("/api/bakes?limit=\(limit)&offset=\(offset)", contentType: nil)
-        let (data, _) = try await session.data(for: req)
-        let response = try decoder.decode(BakeListResponse.self, from: data)
-        return response.bakes
+        let req = try request("/api/bakes?limit=\(limit)&offset=\(offset)", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
+        let listResponse = try decoder.decode(BakeListResponse.self, from: data)
+        return listResponse.bakes
     }
 
     func getBake(id: String) async throws -> Bake {
-        let req = request("/api/bakes/\(id)", contentType: nil)
-        let (data, _) = try await session.data(for: req)
+        let req = try request("/api/bakes/\(id)", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
         return try decoder.decode(Bake.self, from: data)
     }
 
     func createBake(_ bake: CreateBakePayload) async throws -> Bake {
         let body = try JSONEncoder().encode(bake)
-        let req = request("/api/bakes", method: "POST", body: body)
-        let (data, _) = try await session.data(for: req)
+        let req = try request("/api/bakes", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
         return try decoder.decode(Bake.self, from: data)
     }
 
     func updateBake(id: String, _ bake: CreateBakePayload) async throws -> Bake {
         let body = try JSONEncoder().encode(bake)
-        let req = request("/api/bakes/\(id)", method: "PUT", body: body)
-        let (data, _) = try await session.data(for: req)
+        let req = try request("/api/bakes/\(id)", method: "PUT", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
         return try decoder.decode(Bake.self, from: data)
     }
 
     func deleteBake(id: String) async throws {
-        let req = request("/api/bakes/\(id)", method: "DELETE", contentType: nil)
-        _ = try await session.data(for: req)
+        let req = try request("/api/bakes/\(id)", method: "DELETE", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
     }
 
     // MARK: - Photos
@@ -103,56 +153,64 @@ actor APIClient {
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        let req = request(
+        let req = try request(
             "/api/bakes/\(bakeId)/photos",
             method: "POST",
             body: body,
             contentType: "multipart/form-data; boundary=\(boundary)"
         )
 
-        let (data, _) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
         return try decoder.decode(Photo.self, from: data)
     }
 
     func deletePhoto(id: String) async throws {
-        let req = request("/api/photos/\(id)", method: "DELETE", contentType: nil)
-        _ = try await session.data(for: req)
+        let req = try request("/api/photos/\(id)", method: "DELETE", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
     }
 
     // MARK: - Webhooks
 
     func listWebhooks() async throws -> [Webhook] {
-        let req = request("/api/webhooks", contentType: nil)
-        let (data, _) = try await session.data(for: req)
-        let response = try decoder.decode(WebhookListResponse.self, from: data)
-        return response.webhooks
+        let req = try request("/api/webhooks", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
+        let listResponse = try decoder.decode(WebhookListResponse.self, from: data)
+        return listResponse.webhooks
     }
 
     func createWebhook(url: String, secret: String?) async throws -> Webhook {
         var payload: [String: String] = ["url": url]
         if let secret { payload["secret"] = secret }
         let body = try JSONEncoder().encode(payload)
-        let req = request("/api/webhooks", method: "POST", body: body)
-        let (data, _) = try await session.data(for: req)
+        let req = try request("/api/webhooks", method: "POST", body: body)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
         return try decoder.decode(Webhook.self, from: data)
     }
 
     func deleteWebhook(id: String) async throws {
-        let req = request("/api/webhooks/\(id)", method: "DELETE", contentType: nil)
-        _ = try await session.data(for: req)
+        let req = try request("/api/webhooks/\(id)", method: "DELETE", contentType: nil)
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
     }
 
     func pushWebhooks() async throws {
-        let req = request("/api/webhooks/push", method: "POST", body: Data("{}".utf8))
-        _ = try await session.data(for: req)
+        let req = try request("/api/webhooks/push", method: "POST", body: Data("{}".utf8))
+        let (data, response) = try await session.data(for: req)
+        try checkResponse(data, response)
     }
 
     /// Build a photo URL synchronously — safe to call from SwiftUI view bodies.
     /// Reads the base URL directly from shared UserDefaults to avoid actor isolation.
-    nonisolated func photoURL(for photoId: String) -> URL {
+    /// Returns nil when the user-entered base URL doesn't parse; AsyncImage
+    /// call sites render their placeholder for a nil URL.
+    nonisolated func photoURL(for photoId: String) -> URL? {
         let raw = AppGroup.sharedDefaults.string(forKey: Self.baseURLKey) ?? Self.defaultBaseURL
         let base = raw.hasSuffix("/") ? String(raw.dropLast()) : raw
-        return URL(string: "\(base)/api/photos/\(photoId)/image")!
+        return URL(string: "\(base)/api/photos/\(photoId)/image")
     }
 }
 
