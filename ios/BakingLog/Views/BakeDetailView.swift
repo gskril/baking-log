@@ -262,8 +262,12 @@ struct BakeDetailView: View {
                 .textInputAutocapitalization(.sentences)
                 .textFieldStyle(.roundedBorder)
 
-            DatePicker("Time", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
+            // Empty title on purpose: even with labelsHidden, a real title
+            // reserves layout space on newly inserted rows (gap + compressed
+            // date format), so the VoiceOver label is applied separately.
+            DatePicker("", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
+                .accessibilityLabel("Time")
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $viewModel.newStepNote)
