@@ -5,6 +5,7 @@ struct BakeEditView: View {
     @State private var vm = BakeEditViewModel()
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingIngredientFocusId: UUID?
+    @State private var pendingScheduleFocusId: UUID?
     @State private var hasLoadedInitialData = false
     @FocusState private var focusedField: Field?
     let existing: Bake?
@@ -36,6 +37,13 @@ struct BakeEditView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
+                form(proxy: proxy)
+            }
+        }
+    }
+
+    private func form(proxy: ScrollViewProxy) -> some View {
             Form {
                 // Basic Info
                 Section {
@@ -70,7 +78,10 @@ struct BakeEditView: View {
 
                     Button {
                         vm.addIngredient()
-                        pendingIngredientFocusId = vm.ingredientEntries.last?.id
+                        if let id = vm.ingredientEntries.last?.id {
+                            pendingIngredientFocusId = id
+                            reveal(id, proxy: proxy)
+                        }
                     } label: {
                         Label("Add Ingredient", systemImage: "plus.circle")
                     }
@@ -91,6 +102,10 @@ struct BakeEditView: View {
 
                     Button {
                         vm.addScheduleEntry()
+                        if let id = vm.scheduleEntries.last?.id {
+                            pendingScheduleFocusId = id
+                            reveal(id, proxy: proxy)
+                        }
                     } label: {
                         Label("Add Step", systemImage: "plus.circle")
                     }
@@ -229,6 +244,13 @@ struct BakeEditView: View {
                     focusedField = .ingredientName(id)
                 }
             }
+            .onChange(of: vm.scheduleEntries.count) {
+                guard let id = pendingScheduleFocusId else { return }
+                pendingScheduleFocusId = nil
+                DispatchQueue.main.async {
+                    focusedField = .scheduleAction(id)
+                }
+            }
             .interactiveDismissDisabled(vm.isSaving)
             // The inline error section can sit below the fold on a long form,
             // so also raise an alert the moment an action fails.
@@ -238,6 +260,20 @@ struct BakeEditView: View {
                 Text(error)
             }
             .offlineBanner()
+    }
+
+    /// Nudge a freshly inserted row into view above the keyboard. Two passes:
+    /// one after the row insertion settles, one after the keyboard finishes
+    /// its frame change — on device those animations run longer than in the
+    /// simulator, and a single early scroll lands short. When the first pass
+    /// already landed right, the second is a visual no-op.
+    private func reveal(_ id: UUID, proxy: ScrollViewProxy) {
+        for delay in [0.45, 0.9] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation {
+                    proxy.scrollTo(id, anchor: .bottom)
+                }
+            }
         }
     }
 

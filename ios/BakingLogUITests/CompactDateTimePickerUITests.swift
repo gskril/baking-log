@@ -1,14 +1,12 @@
 import XCTest
 
-// TEMPORARY: verifies the custom capsule date/time picker is interactive —
-// tapping the date capsule opens the calendar popover (not the wheels),
-// tapping the time capsule opens the wheel popover, and turning the wheel
-// updates the capsule text (both capsules share one Date binding, so
-// propagation is proven once).
+// Verifies the schedule-row date/time capsule: tapping it opens the combined
+// date+time wheel popover, turning the minute wheel updates the capsule text,
+// and the popover dismisses.
 final class CompactDateTimePickerUITests: XCTestCase {
 
     @MainActor
-    func testDateAndTimeCapsulesAreInteractive() throws {
+    func testCapsuleOpensWheelsAndUpdates() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-datePickerRepro"]
         app.launch()
@@ -20,42 +18,72 @@ final class CompactDateTimePickerUITests: XCTestCase {
         // Insert a fresh row — the historically glitchy case.
         addStep.tap()
 
-        // Newest row's capsules are the last Date/Time buttons in the form.
-        let dateCapsule = app.buttons.matching(identifier: "Date").allElementsBoundByIndex.last!
-        XCTAssertTrue(dateCapsule.exists, "No date capsule found")
+        // Newest row's capsule is the last "Date and time" button in the form.
+        let capsule = app.buttons.matching(identifier: "Date and time").allElementsBoundByIndex.last!
+        XCTAssertTrue(capsule.exists, "No date-and-time capsule found")
+        let valueBefore = capsule.value as? String
 
-        dateCapsule.tap()
+        capsule.tap()
 
-        // The graphical calendar popover should be up — and NOT the wheels.
-        // (Scope to the popover: the form's Start Date row is also a date picker.)
-        let dismissRegion = app.otherElements["PopoverDismissRegion"]
-        XCTAssertTrue(dismissRegion.waitForExistence(timeout: 5), "No popover appeared on date capsule tap")
-        let popoverCalendar = app.popovers.datePickers.firstMatch
-        XCTAssertTrue(popoverCalendar.waitForExistence(timeout: 3), "Popover has no date picker")
-        XCTAssertEqual(app.pickerWheels.count, 0, "Date capsule opened the wheel popover instead of the calendar")
-        // The collapsed-calendar bug renders a ~50pt-tall popover; a usable
-        // calendar is a few hundred points tall.
-        XCTAssertGreaterThan(app.popovers.firstMatch.frame.height, 200, "Calendar popover is collapsed")
-
-        dismissRegion.tap()
-        XCTAssertTrue(waitForDisappearance(of: dismissRegion, timeout: 5), "Calendar popover did not dismiss")
-
-        // Time capsule → wheel popover; turning the wheel must update the text.
-        let timeCapsule = app.buttons.matching(identifier: "Time").allElementsBoundByIndex.last!
-        XCTAssertTrue(timeCapsule.exists, "No time capsule found")
-        let timeBefore = timeCapsule.value as? String
-
-        timeCapsule.tap()
-
-        let minuteWheel = app.pickerWheels.element(boundBy: 1)
-        XCTAssertTrue(minuteWheel.waitForExistence(timeout: 5), "Time wheel popover did not open on tap")
+        // Combined wheels: date, hour, minute, AM/PM.
+        let minuteWheel = app.pickerWheels.element(boundBy: 2)
+        XCTAssertTrue(minuteWheel.waitForExistence(timeout: 5), "Wheel popover did not open on tap")
+        XCTAssertGreaterThanOrEqual(app.pickerWheels.count, 3, "Expected combined date+time wheels")
         minuteWheel.adjust(toPickerWheelValue: "37")
 
-        app.otherElements["PopoverDismissRegion"].tap()
+        let dismissRegion = app.otherElements["PopoverDismissRegion"]
+        dismissRegion.tap()
+        XCTAssertTrue(waitForDisappearance(of: dismissRegion, timeout: 5), "Wheel popover did not dismiss")
 
-        let timeAfter = timeCapsule.value as? String
-        XCTAssertNotEqual(timeBefore, timeAfter, "Time capsule text did not change after adjusting the wheel")
-        XCTAssertTrue(timeAfter?.contains("37") == true, "Time capsule does not show the picked minute (got \(timeAfter ?? "nil"))")
+        let valueAfter = capsule.value as? String
+        XCTAssertNotEqual(valueBefore, valueAfter, "Capsule text did not change after adjusting the wheel")
+        XCTAssertTrue(valueAfter?.contains("37") == true, "Capsule does not show the picked minute (got \(valueAfter ?? "nil"))")
+    }
+
+    @MainActor
+    func testAddedRowsAreRevealedAboveKeyboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-datePickerRepro"]
+        app.launch()
+
+        let addIngredient = app.buttons["Add Ingredient"]
+        XCTAssertTrue(addIngredient.waitForExistence(timeout: 10), "Edit sheet did not appear")
+
+        // First ingredient: focus jumps to the new name field and the keyboard rises.
+        addIngredient.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "Keyboard did not appear after Add Ingredient")
+        app.typeText("Flour")
+
+        // Second ingredient while the keyboard is already up — the row Greg
+        // reported as hidden. The new name field must sit above the keyboard.
+        addIngredient.tap()
+        Thread.sleep(forTimeInterval: 1.0) // reveal scroll is delayed 0.4s + animation
+
+        let nameField = app.textFields.matching(identifier: "Name").allElementsBoundByIndex.last!
+        XCTAssertTrue(nameField.exists, "No new ingredient name field")
+        XCTAssertTrue(nameField.isHittable, "New ingredient field is not visible")
+        XCTAssertLessThan(nameField.frame.maxY, keyboard.frame.minY, "New ingredient field is under the keyboard")
+        app.typeText("Water")
+        XCTAssertEqual(nameField.value as? String, "Water", "Typing did not land in the new ingredient field")
+
+        // Add Step (keyboard dismissed first — the button sits below it): the
+        // new row lands below the fold, must scroll into view, and the Action
+        // field must take focus so typing lands there immediately.
+        app.buttons["Done"].tap()
+        XCTAssertTrue(waitForDisappearance(of: keyboard, timeout: 5), "Keyboard did not dismiss")
+
+        let addStep = app.buttons["Add Step"]
+        addStep.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "Keyboard did not appear after Add Step (Action field not focused)")
+        Thread.sleep(forTimeInterval: 1.2) // both reveal passes
+
+        let actionField = app.textFields.matching(identifier: "Action (e.g., Mix, fold, shape)").allElementsBoundByIndex.last!
+        XCTAssertTrue(actionField.exists, "No new step action field")
+        XCTAssertTrue(actionField.isHittable, "New step action field is not visible")
+        XCTAssertLessThan(actionField.frame.maxY, keyboard.frame.minY, "New step action field is under the keyboard")
+        app.typeText("Fold")
+        XCTAssertEqual(actionField.value as? String, "Fold", "Typing did not land in the new step's Action field")
     }
 
     private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {

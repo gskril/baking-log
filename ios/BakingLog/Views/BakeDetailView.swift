@@ -31,21 +31,23 @@ struct BakeDetailView: View {
             if viewModel.isLoading && viewModel.bake == nil {
                 ProgressView()
             } else if let bake = viewModel.bake {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Photos
-                        photosSection(bake: bake)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            // Photos
+                            photosSection(bake: bake)
 
-                        // Ingredients
-                        ingredientsSection(bake: bake)
+                            // Ingredients
+                            ingredientsSection(bake: bake)
 
-                        // Schedule
-                        scheduleSection(bake: bake)
+                            // Schedule
+                            scheduleSection(bake: bake, proxy: proxy)
 
-                        // Notes
-                        notesSection(bake: bake)
+                            // Notes
+                            notesSection(bake: bake)
+                        }
+                        .padding()
                     }
-                    .padding()
                 }
                 // Keep the keyboard up while scrolling to see the notes field;
                 // dragging down onto the keyboard still dismisses it.
@@ -157,7 +159,7 @@ struct BakeDetailView: View {
     // MARK: - Schedule Section
 
     @ViewBuilder
-    private func scheduleSection(bake: Bake) -> some View {
+    private func scheduleSection(bake: Bake, proxy: ScrollViewProxy) -> some View {
         SectionBlock(title: "Schedule") {
             if let schedule = bake.schedule, !schedule.isEmpty {
                 let dates = schedule.map(\.date)
@@ -192,12 +194,20 @@ struct BakeDetailView: View {
 
             if showingAddStep {
                 inlineAddStepForm()
+                    .id("inlineAddStep")
             } else {
                 Button {
                     viewModel.newStepTime = .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
+                    }
+                    // Nudge the form into view above the keyboard once the
+                    // insertion and keyboard-avoidance inset settle.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        withAnimation {
+                            proxy.scrollTo("inlineAddStep", anchor: .bottom)
+                        }
                     }
                 } label: {
                     Label("Add Step", systemImage: "plus.circle")
