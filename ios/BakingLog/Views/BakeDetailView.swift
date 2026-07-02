@@ -369,10 +369,16 @@ struct PhotoCarousel: View {
 struct FullScreenPhoto: View {
     let photo: Photo
     @Environment(\.dismiss) private var dismiss
+    @State private var dragOffset: CGFloat = 0
+
+    private var backdropOpacity: Double {
+        1 - min(abs(dragOffset) / 800, 1)
+    }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             Color.black.ignoresSafeArea()
+                .opacity(backdropOpacity)
 
             AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
                 switch phase {
@@ -384,7 +390,31 @@ struct FullScreenPhoto: View {
                     ProgressView()
                 }
             }
-
+            .offset(y: dragOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { dragOffset = $0.translation.height }
+                    .onEnded { value in
+                        if abs(value.translation.height) > 120 {
+                            let direction: CGFloat = value.translation.height > 0 ? 1 : -1
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                dragOffset = direction * 1200
+                            }
+                            Task {
+                                try? await Task.sleep(for: .seconds(0.2))
+                                // The system dismiss transition always slides down,
+                                // which fights an upward swipe — suppress it.
+                                var transaction = Transaction()
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) { dismiss() }
+                            }
+                        } else {
+                            withAnimation(.spring) { dragOffset = 0 }
+                        }
+                    }
+            )
+        }
+        .overlay(alignment: .topTrailing) {
             Button {
                 dismiss()
             } label: {
@@ -394,6 +424,8 @@ struct FullScreenPhoto: View {
                     .foregroundStyle(.white)
             }
             .padding()
+            .opacity(backdropOpacity)
         }
+        .presentationBackground(.clear)
     }
 }
