@@ -194,8 +194,7 @@ struct BakeDetailView: View {
                 inlineAddStepForm()
             } else {
                 Button {
-                    // Default to the last step's time so the new step lands on the right day.
-                    viewModel.newStepTime = bake.schedule?.last?.date ?? .now
+                    viewModel.newStepTime = .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
@@ -262,12 +261,7 @@ struct BakeDetailView: View {
                 .textInputAutocapitalization(.sentences)
                 .textFieldStyle(.roundedBorder)
 
-            // Empty title on purpose: even with labelsHidden, a real title
-            // reserves layout space on newly inserted rows (gap + compressed
-            // date format), so the VoiceOver label is applied separately.
-            DatePicker("", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
-                .accessibilityLabel("Time")
+            CompactDateTimePicker(date: $viewModel.newStepTime)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $viewModel.newStepNote)

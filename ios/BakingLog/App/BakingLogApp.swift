@@ -14,7 +14,11 @@ struct BakingLogApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if ProcessInfo.processInfo.arguments.contains("-datePickerRepro") {
+                DebugPickerRepro()
+            } else {
+                ContentView()
+            }
         }
     }
 }

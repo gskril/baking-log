@@ -326,12 +326,7 @@ struct ScheduleEntryRow: View {
                 .focused(focusedField, equals: .scheduleAction(entry.id))
                 .textInputAutocapitalization(.sentences)
 
-            // Empty title on purpose: even with labelsHidden, a real title
-            // reserves layout space on newly inserted rows (gap + compressed
-            // date format), so the VoiceOver label is applied separately.
-            DatePicker("", selection: $entry.timeDate, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
-                .accessibilityLabel("Time")
+            CompactDateTimePicker(date: $entry.timeDate)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $entry.note)

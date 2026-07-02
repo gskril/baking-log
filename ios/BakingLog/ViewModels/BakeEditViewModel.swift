@@ -115,9 +115,7 @@ final class BakeEditViewModel {
     // MARK: - Schedule CRUD
 
     func addScheduleEntry() {
-        // Default to the last entry's time so consecutive steps land on the same day.
-        let defaultTime = scheduleEntries.last?.timeDate ?? .now
-        scheduleEntries.append(EditableScheduleEntry(timeDate: defaultTime, action: "", note: ""))
+        scheduleEntries.append(EditableScheduleEntry(timeDate: .now, action: "", note: ""))
     }
 
     func removeScheduleEntry(at offsets: IndexSet) {
