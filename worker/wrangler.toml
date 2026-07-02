@@ -11,5 +11,10 @@ database_id = "28b6fe2b-6bdf-4e80-b804-209dd4cc2353"
 binding = "PHOTOS"
 bucket_name = "baking-log"
 
+# Run the Worker near D1/R2 instead of near the client — every endpoint here
+# makes multiple storage round trips, so proximity to storage wins.
+[placement]
+mode = "smart"
+
 [observability]
 enabled = false
