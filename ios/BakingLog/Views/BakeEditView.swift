@@ -122,18 +122,18 @@ struct BakeEditView: View {
                     }
 
                     // New photos
-                    if !vm.newImages.isEmpty {
+                    if !vm.pendingPhotos.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(vm.newImages.indices, id: \.self) { i in
-                                    Image(uiImage: vm.newImages[i])
+                                ForEach(vm.pendingPhotos) { photo in
+                                    Image(uiImage: photo.thumbnail)
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
                                         .frame(width: 80, height: 80)
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                         .overlay(alignment: .topTrailing) {
                                             Button {
-                                                vm.newImages.remove(at: i)
+                                                vm.removePendingPhoto(id: photo.id)
                                             } label: {
                                                 Image(systemName: "minus.circle.fill")
                                                     .font(.body)
@@ -258,13 +258,11 @@ struct BakeEditView: View {
 
     private func loadPhotos() async {
         guard !selectedPhotos.isEmpty else { return }
-        for item in selectedPhotos {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                vm.newImages.append(image)
-            }
-        }
+        let items = selectedPhotos
         selectedPhotos.removeAll()
+        // Loads, downsamples, and JPEG-encodes each photo; failures are
+        // counted and surfaced via vm.error instead of silently dropped.
+        await vm.addPhotos(items)
     }
 }
 

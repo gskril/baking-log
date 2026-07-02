@@ -1,4 +1,5 @@
 import Foundation
+import PhotosUI
 import SwiftUI
 
 @MainActor
@@ -9,7 +10,7 @@ class BakeEditViewModel: ObservableObject {
     @Published var notes: String = ""
     @Published var scheduleEntries: [EditableScheduleEntry] = []
     @Published var existingPhotos: [Photo] = []
-    @Published var newImages: [UIImage] = []
+    @Published var pendingPhotos: [PendingPhoto] = []
     @Published var isSaving = false
     @Published var error: String?
 
@@ -30,6 +31,16 @@ class BakeEditViewModel: ObservableObject {
         var amountValue: String
         var unit: IngredientUnit
         var note: String
+    }
+
+    /// A picked photo that hasn't been uploaded yet. `jpegData` is already
+    /// downsampled and JPEG-encoded at pick time (see `addPhotos`), so
+    /// `save()` uploads it as-is; `thumbnail` is decoded from that same small
+    /// JPEG purely for display in the edit sheet.
+    struct PendingPhoto: Identifiable {
+        let id = UUID()
+        let jpegData: Data
+        let thumbnail: UIImage
     }
 
     struct EditableScheduleEntry: Identifiable {
@@ -54,7 +65,7 @@ class BakeEditViewModel: ObservableObject {
         title = bake.title ?? ""
         notes = bake.notes ?? ""
         existingPhotos = bake.photos ?? []
-        newImages = []
+        pendingPhotos = []
         error = nil
 
         bakeDate = Formatters.isoDay.date(from: bake.bakeDate) ?? .now
@@ -71,7 +82,7 @@ class BakeEditViewModel: ObservableObject {
         ingredientEntries = prefill.ingredientEntries
         scheduleEntries = []
         existingPhotos = []
-        newImages = []
+        pendingPhotos = []
         error = nil
         bakeDate = .now
     }
@@ -115,6 +126,49 @@ class BakeEditViewModel: ObservableObject {
 
     func moveScheduleEntry(from source: IndexSet, to destination: Int) {
         scheduleEntries.move(fromOffsets: source, toOffset: destination)
+    }
+
+    // MARK: - Photos
+
+    /// Loads picked photos and downsamples/JPEG-encodes them immediately, off
+    /// the main actor, so `save()` only ever uploads already-processed `Data`
+    /// and no full-resolution `UIImage` is ever retained.
+    func addPhotos(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+
+        var failureCount = 0
+        var lastError: Error?
+
+        for item in items {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    failureCount += 1
+                    continue
+                }
+                let jpegData = try await ImageProcessing.downsampledJPEGData(from: data)
+                guard let thumbnail = UIImage(data: jpegData) else {
+                    failureCount += 1
+                    continue
+                }
+                pendingPhotos.append(PendingPhoto(jpegData: jpegData, thumbnail: thumbnail))
+            } catch {
+                failureCount += 1
+                lastError = error
+            }
+        }
+
+        if failureCount > 0 {
+            let failureText = failureCount == 1 ? "1 photo failed to load." : "\(failureCount) photos failed to load."
+            if let lastError {
+                error = "\(failureText) \(lastError.localizedDescription)"
+            } else {
+                error = failureText
+            }
+        }
+    }
+
+    func removePendingPhoto(id: UUID) {
+        pendingPhotos.removeAll { $0.id == id }
     }
 
     // MARK: - Save
@@ -161,8 +215,9 @@ class BakeEditViewModel: ObservableObject {
             schedule: schedule.isEmpty ? nil : schedule
         )
 
-        // Convert images to Data on @MainActor (UIImage is not Sendable)
-        let uploads = newImages.map { ($0, $0.jpegData(compressionQuality: 0.8)) }
+        // Photos were downsampled and JPEG-encoded at pick time; snapshot the
+        // list because it shrinks as uploads succeed.
+        let uploads = pendingPhotos
 
         do {
             let bake: Bake
@@ -177,12 +232,11 @@ class BakeEditViewModel: ObservableObject {
 
             var failedCount = 0
             var lastUploadError: Error?
-            for (image, data) in uploads {
-                guard let data else { continue }
+            for photo in uploads {
                 do {
-                    _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
-                    // Only images that haven't uploaded yet are retried.
-                    newImages.removeAll { $0 === image }
+                    _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: photo.jpegData)
+                    // Only photos that haven't uploaded yet are retried.
+                    pendingPhotos.removeAll { $0.id == photo.id }
                 } catch {
                     failedCount += 1
                     lastUploadError = error
