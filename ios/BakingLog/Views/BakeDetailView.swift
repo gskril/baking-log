@@ -9,10 +9,14 @@ struct BakeDetailView: View {
     @State private var showingAddStep = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @FocusState private var isNewStepActionFocused: Bool
+    @FocusState private var isNotesFocused: Bool
 
     init(bakeId: String, initialTitle: String?) {
         self.bakeId = bakeId
         self.initialTitle = initialTitle
+        // Built eagerly on every BakeDetailView init (unlike @StateObject's
+        // autoclosure) and discarded when state already exists — keep the
+        // ViewModel initializer a trivial field store.
         _viewModel = State(initialValue: BakeDetailViewModel(bakeId: bakeId))
     }
 
@@ -44,7 +48,7 @@ struct BakeDetailView: View {
                             scheduleSection(bake: bake, proxy: proxy)
 
                             // Notes
-                            notesSection(bake: bake)
+                            notesSection(bake: bake, proxy: proxy)
                         }
                         .padding()
                     }
@@ -204,11 +208,7 @@ struct BakeDetailView: View {
                     }
                     // Nudge the form into view above the keyboard once the
                     // insertion and keyboard-avoidance inset settle.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        withAnimation {
-                            proxy.scrollTo("inlineAddStep", anchor: .bottom)
-                        }
-                    }
+                    KeyboardReveal.reveal("inlineAddStep", in: proxy)
                 } label: {
                     Label("Add Step", systemImage: "plus.circle")
                         .font(.subheadline)
@@ -221,7 +221,7 @@ struct BakeDetailView: View {
     // MARK: - Notes Section
 
     @ViewBuilder
-    private func notesSection(bake: Bake) -> some View {
+    private func notesSection(bake: Bake, proxy: ScrollViewProxy) -> some View {
         let currentNotes = bake.notes ?? ""
         let notesChanged = viewModel.editedNotes != currentNotes
 
@@ -234,6 +234,14 @@ struct BakeDetailView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(.quaternary)
+                }
+                .focused($isNotesFocused)
+                // Keyboard avoidance only keeps the focused field visible;
+                // the Reset/Save row below it would stay under the keyboard.
+                .onChange(of: isNotesFocused) {
+                    if isNotesFocused {
+                        KeyboardReveal.reveal("notesActions", in: proxy)
+                    }
                 }
 
             HStack {
@@ -256,6 +264,7 @@ struct BakeDetailView: View {
                 }
                 .disabled(!notesChanged || viewModel.isSavingNotes)
             }
+            .id("notesActions")
         }
     }
 
@@ -438,6 +447,7 @@ struct FullScreenPhoto: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.white)
             }
+            .accessibilityLabel("Close")
             .padding()
             .opacity(backdropOpacity)
         }
