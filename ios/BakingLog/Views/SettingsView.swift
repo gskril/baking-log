@@ -7,6 +7,20 @@ struct SettingsView: View {
     @AppStorage("api_key", store: AppGroup.sharedDefaults)
     private var apiKey = ""
 
+    /// Non-blocking warning when the API URL doesn't look like an http(s) URL.
+    private var apiURLWarning: String? {
+        let trimmed = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let url = URL(string: trimmed, encodingInvalidCharacters: false),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil
+        else {
+            return "This doesn't look like a valid http(s) URL"
+        }
+        return nil
+    }
+
     var body: some View {
         Form {
             Section {
@@ -14,10 +28,19 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                    .onSubmit {
+                        apiBaseURL = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
             } header: {
                 Text("Server")
             } footer: {
-                Text("The URL of your Cloudflare Worker (e.g., https://baking-log.you.workers.dev)")
+                VStack(alignment: .leading, spacing: 4) {
+                    if let apiURLWarning {
+                        Label(apiURLWarning, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                    }
+                    Text("The URL of your Cloudflare Worker (e.g., https://baking-log.you.workers.dev)")
+                }
             }
 
             Section {

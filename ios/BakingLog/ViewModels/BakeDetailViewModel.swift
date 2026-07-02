@@ -35,7 +35,10 @@ final class BakeDetailViewModel: ObservableObject {
             bake = loaded
             editedNotes = loaded.notes ?? ""
         } catch {
-            if bake == nil {
+            if error.isCancellation {
+                // .task {} cancels the in-flight request on disappear — don't
+                // surface cancellation as a user-facing error.
+            } else if bake == nil {
                 loadError = error.localizedDescription
             } else {
                 // The full-screen error only renders with no bake loaded; a

@@ -12,7 +12,11 @@ class WebhookSettingsViewModel: ObservableObject {
         do {
             webhooks = try await APIClient.shared.listWebhooks()
         } catch {
-            self.error = error.localizedDescription
+            // .task {} cancels the in-flight request on disappear — don't
+            // surface cancellation as a user-facing error.
+            if !error.isCancellation {
+                self.error = error.localizedDescription
+            }
         }
         isLoading = false
     }

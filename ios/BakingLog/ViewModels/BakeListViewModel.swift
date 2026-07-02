@@ -15,7 +15,11 @@ class BakeListViewModel: ObservableObject {
         do {
             bakes = try await APIClient.shared.listBakes()
         } catch {
-            self.error = error.localizedDescription
+            // .task {} cancels the in-flight request on disappear — don't
+            // surface cancellation as a user-facing error.
+            if !error.isCancellation {
+                self.error = error.localizedDescription
+            }
         }
         isLoading = false
     }
