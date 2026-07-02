@@ -44,234 +44,230 @@ struct BakeEditView: View {
     }
 
     private func form(proxy: ScrollViewProxy) -> some View {
-            Form {
-                // Basic Info
+        Form {
+            basicInfoSection
+            ingredientsSection(proxy: proxy)
+            scheduleSection(proxy: proxy)
+            photosSection
+            notesSection
+
+            if let error = vm.error {
                 Section {
-                    TextField("Title", text: $vm.title)
-                        .focused($focusedField, equals: .title)
-                        .textInputAutocapitalization(.sentences)
-                        .overlay(alignment: .trailing) {
-                            if !vm.title.isEmpty {
-                                Button {
-                                    vm.title = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                    DatePicker("Start Date", selection: $vm.bakeDate, displayedComponents: .date)
-                }
-
-                // Ingredients
-                Section {
-                    ForEach($vm.ingredientEntries) { $entry in
-                        IngredientEntryRow(
-                            entry: $entry,
-                            focusedField: $focusedField
-                        )
-                    }
-                    .onDelete(perform: vm.removeIngredient)
-                    .onMove(perform: vm.moveIngredient)
-
-                    Button {
-                        vm.addIngredient()
-                        if let id = vm.ingredientEntries.last?.id {
-                            pendingIngredientFocusId = id
-                            reveal(id, proxy: proxy)
-                        }
-                    } label: {
-                        Label("Add Ingredient", systemImage: "plus.circle")
-                    }
-                } header: {
-                    Text("Ingredients")
-                }
-
-                // Schedule
-                Section {
-                    ForEach($vm.scheduleEntries) { $entry in
-                        ScheduleEntryRow(
-                            entry: $entry,
-                            focusedField: $focusedField
-                        )
-                    }
-                    .onDelete(perform: vm.removeScheduleEntry)
-                    .onMove(perform: vm.moveScheduleEntry)
-
-                    Button {
-                        vm.addScheduleEntry()
-                        if let id = vm.scheduleEntries.last?.id {
-                            pendingScheduleFocusId = id
-                            reveal(id, proxy: proxy)
-                        }
-                    } label: {
-                        Label("Add Step", systemImage: "plus.circle")
-                    }
-                } header: {
-                    Text("Schedule")
-                }
-
-                // Photos
-                Section("Photos") {
-                    // Existing server photos
-                    if !vm.existingPhotos.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(vm.existingPhotos) { photo in
-                                    AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
-                                        if case .success(let image) = phase {
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        } else {
-                                            Rectangle().fill(.quaternary)
-                                        }
-                                    }
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(alignment: .topTrailing) {
-                                        Button {
-                                            Task { await vm.deleteExistingPhoto(photo) }
-                                        } label: {
-                                            Image(systemName: "minus.circle.fill")
-                                                .font(.body)
-                                                .foregroundStyle(.red)
-                                                .background(Circle().fill(.white).padding(2))
-                                        }
-                                        .padding(4)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // New photos
-                    if !vm.pendingPhotos.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(vm.pendingPhotos) { photo in
-                                    Image(uiImage: photo.thumbnail)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        .overlay(alignment: .topTrailing) {
-                                            Button {
-                                                vm.removePendingPhoto(id: photo.id)
-                                            } label: {
-                                                Image(systemName: "minus.circle.fill")
-                                                    .font(.body)
-                                                    .foregroundStyle(.red)
-                                                    .background(Circle().fill(.white).padding(2))
-                                            }
-                                            .padding(4)
-                                        }
-                                }
-                            }
-                        }
-                    }
-
-                    PhotosPicker(
-                        selection: $selectedPhotos,
-                        maxSelectionCount: 10,
-                        matching: .images
-                    ) {
-                        Label("Add Photos", systemImage: "photo.on.rectangle.angled")
-                    }
-                    .onChange(of: selectedPhotos) {
-                        Task { await loadPhotos() }
-                    }
-                }
-
-                // Notes
-                Section("Notes") {
-                    // Vertical-axis TextField grows with its content (unlike a
-                    // fixed-height TextEditor, which scrolls internally and lets
-                    // the caret drift out of view under the keyboard).
-                    TextField("Notes", text: $vm.notes, axis: .vertical)
-                        .focused($focusedField, equals: .notes)
-                        .lineLimit(7...)
-                        .textInputAutocapitalization(.sentences)
-                }
-
-                if let error = vm.error {
-                    Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                    }
+                    Text(error)
+                        .foregroundStyle(.red)
                 }
             }
-            .navigationTitle(vm.isEditing ? "Edit Bake" : "New Bake")
-            .navigationBarTitleDisplayMode(.inline)
-            // Only dismiss the keyboard when dragging down onto it — scrolling
-            // up to see more of a field should never hide the keyboard.
-            .scrollDismissesKeyboard(.interactively)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if vm.isSaving {
-                        ProgressView()
-                    } else {
-                        Button(vm.isEditing ? "Save" : "Create") {
-                            submitPrimaryAction()
-                        }
-                        .disabled(!hasLoadedInitialData)
+        }
+        .navigationTitle(vm.isEditing ? "Edit Bake" : "New Bake")
+        .navigationBarTitleDisplayMode(.inline)
+        // Only dismiss the keyboard when dragging down onto it — scrolling
+        // up to see more of a field should never hide the keyboard.
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                if vm.isSaving {
+                    ProgressView()
+                } else {
+                    Button(vm.isEditing ? "Save" : "Create") {
+                        submitPrimaryAction()
                     }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        focusedField = nil
-                    }
+                    .disabled(!hasLoadedInitialData)
                 }
             }
-            .onAppear {
-                guard !hasLoadedInitialData else { return }
-                hasLoadedInitialData = true
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    focusedField = nil
+                }
+            }
+        }
+        .onAppear {
+            guard !hasLoadedInitialData else { return }
+            hasLoadedInitialData = true
 
-                if let existing {
-                    vm.loadExisting(existing)
-                } else if let prefill {
-                    vm.loadPrefill(prefill)
-                }
+            if let existing {
+                vm.loadExisting(existing)
+            } else if let prefill {
+                vm.loadPrefill(prefill)
             }
-            .onChange(of: vm.ingredientEntries.count) {
-                guard let id = pendingIngredientFocusId else { return }
-                pendingIngredientFocusId = nil
-                DispatchQueue.main.async {
-                    focusedField = .ingredientName(id)
-                }
+        }
+        .onChange(of: vm.ingredientEntries.count) {
+            guard let id = pendingIngredientFocusId else { return }
+            pendingIngredientFocusId = nil
+            DispatchQueue.main.async {
+                focusedField = .ingredientName(id)
             }
-            .onChange(of: vm.scheduleEntries.count) {
-                guard let id = pendingScheduleFocusId else { return }
-                pendingScheduleFocusId = nil
-                DispatchQueue.main.async {
-                    focusedField = .scheduleAction(id)
-                }
+        }
+        .onChange(of: vm.scheduleEntries.count) {
+            guard let id = pendingScheduleFocusId else { return }
+            pendingScheduleFocusId = nil
+            DispatchQueue.main.async {
+                focusedField = .scheduleAction(id)
             }
-            .interactiveDismissDisabled(vm.isSaving)
-            // The inline error section can sit below the fold on a long form,
-            // so also raise an alert the moment an action fails.
-            .alert("Something Went Wrong", isPresented: isShowingError, presenting: vm.error) { _ in
-                Button("OK", role: .cancel) {}
-            } message: { error in
-                Text(error)
-            }
-            .offlineBanner()
+        }
+        .interactiveDismissDisabled(vm.isSaving)
+        // The inline error section can sit below the fold on a long form,
+        // so also raise an alert the moment an action fails.
+        .alert("Something Went Wrong", isPresented: isShowingError, presenting: vm.error) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { error in
+            Text(error)
+        }
+        .offlineBanner()
     }
 
-    /// Nudge a freshly inserted row into view above the keyboard. Two passes:
-    /// one after the row insertion settles, one after the keyboard finishes
-    /// its frame change — on device those animations run longer than in the
-    /// simulator, and a single early scroll lands short. When the first pass
-    /// already landed right, the second is a visual no-op.
-    private func reveal(_ id: UUID, proxy: ScrollViewProxy) {
-        for delay in [0.45, 0.9] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation {
-                    proxy.scrollTo(id, anchor: .bottom)
+    // MARK: - Sections
+
+    private var basicInfoSection: some View {
+        Section {
+            TextField("Title", text: $vm.title)
+                .focused($focusedField, equals: .title)
+                .textInputAutocapitalization(.sentences)
+                .overlay(alignment: .trailing) {
+                    if !vm.title.isEmpty {
+                        Button {
+                            vm.title = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear Title")
+                    }
+                }
+
+            DatePicker("Start Date", selection: $vm.bakeDate, displayedComponents: .date)
+        }
+    }
+
+    private func ingredientsSection(proxy: ScrollViewProxy) -> some View {
+        Section {
+            ForEach($vm.ingredientEntries) { $entry in
+                IngredientEntryRow(
+                    entry: $entry,
+                    focusedField: $focusedField
+                )
+            }
+            .onDelete(perform: vm.removeIngredient)
+            .onMove(perform: vm.moveIngredient)
+
+            Button {
+                vm.addIngredient()
+                if let id = vm.ingredientEntries.last?.id {
+                    pendingIngredientFocusId = id
+                    KeyboardReveal.reveal(id, in: proxy)
+                }
+            } label: {
+                Label("Add Ingredient", systemImage: "plus.circle")
+            }
+        } header: {
+            Text("Ingredients")
+        }
+    }
+
+    private func scheduleSection(proxy: ScrollViewProxy) -> some View {
+        Section {
+            ForEach($vm.scheduleEntries) { $entry in
+                ScheduleEntryRow(
+                    entry: $entry,
+                    focusedField: $focusedField
+                )
+            }
+            .onDelete(perform: vm.removeScheduleEntry)
+            .onMove(perform: vm.moveScheduleEntry)
+
+            Button {
+                vm.addScheduleEntry()
+                if let id = vm.scheduleEntries.last?.id {
+                    pendingScheduleFocusId = id
+                    KeyboardReveal.reveal(id, in: proxy)
+                }
+            } label: {
+                Label("Add Step", systemImage: "plus.circle")
+            }
+        } header: {
+            Text("Schedule")
+        }
+    }
+
+    private var photosSection: some View {
+        Section("Photos") {
+            if !vm.existingPhotos.isEmpty {
+                photoStrip(vm.existingPhotos) { photo in
+                    AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Rectangle().fill(.quaternary)
+                        }
+                    }
+                } onDelete: { photo in
+                    Task { await vm.deleteExistingPhoto(photo) }
+                }
+            }
+
+            if !vm.pendingPhotos.isEmpty {
+                photoStrip(vm.pendingPhotos) { photo in
+                    Image(uiImage: photo.thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } onDelete: { photo in
+                    vm.removePendingPhoto(id: photo.id)
+                }
+            }
+
+            PhotosPicker(
+                selection: $selectedPhotos,
+                maxSelectionCount: 10,
+                matching: .images
+            ) {
+                Label("Add Photos", systemImage: "photo.on.rectangle.angled")
+            }
+            .onChange(of: selectedPhotos) {
+                Task { await loadPhotos() }
+            }
+        }
+    }
+
+    private var notesSection: some View {
+        Section("Notes") {
+            // Vertical-axis TextField grows with its content (unlike a
+            // fixed-height TextEditor, which scrolls internally and lets
+            // the caret drift out of view under the keyboard).
+            TextField("Notes", text: $vm.notes, axis: .vertical)
+                .focused($focusedField, equals: .notes)
+                .lineLimit(7...)
+                .textInputAutocapitalization(.sentences)
+        }
+    }
+
+    /// Horizontal strip of 80×80 thumbnails, each with a red delete badge.
+    private func photoStrip<Item: Identifiable, Thumbnail: View>(
+        _ items: [Item],
+        @ViewBuilder thumbnail: @escaping (Item) -> Thumbnail,
+        onDelete: @escaping (Item) -> Void
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items) { item in
+                    thumbnail(item)
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                onDelete(item)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.body)
+                                    .foregroundStyle(.red)
+                                    .background(Circle().fill(.white).padding(2))
+                            }
+                            .accessibilityLabel("Delete Photo")
+                            .padding(4)
+                        }
                 }
             }
         }

@@ -33,9 +33,14 @@ struct CompactDateTimePicker: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Color(.tertiarySystemFill), in: Capsule())
+            // The capsule itself is ~36pt tall; pad the hit target out to the
+            // 44pt HIG minimum without changing the visuals.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Date and time")
+        .accessibilityIdentifier("dateTimeCapsule")
         .accessibilityValue(date.formatted(date: .abbreviated, time: .shortened))
         // No arrowEdge: let the popover pick the side with room (a forced edge
         // squeezes it into ~50pt when the row is near the screen edge).
