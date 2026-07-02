@@ -4,6 +4,7 @@ struct BakeListView: View {
     @StateObject private var vm = BakeListViewModel()
     @ObservedObject private var network = NetworkMonitor.shared
     @State private var showingNewBake = false
+    @State private var pushToastClearTask: Task<Void, Never>?
 
     private var isShowingError: Binding<Bool> {
         Binding {
@@ -41,9 +42,25 @@ struct BakeListView: View {
                         NavigationLink(value: bake) {
                             BakeRow(bake: bake)
                         }
+                        .task {
+                            // Infinite scroll: fetch the next page when the
+                            // last loaded row becomes visible.
+                            if bake.id == vm.bakes.last?.id {
+                                await vm.loadMore()
+                            }
+                        }
                     }
                     .onDelete { offsets in
                         Task { await vm.delete(at: offsets) }
+                    }
+
+                    if vm.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
@@ -112,10 +129,13 @@ struct BakeListView: View {
             }
         }
         .onChange(of: vm.pushResult) {
-            // Clear push result after 3 seconds
+            // Clear push result after 3 seconds. Cancel any in-flight clear
+            // task first so an earlier toast's timer can't dismiss a newer one.
+            pushToastClearTask?.cancel()
             if vm.pushResult != nil {
-                Task {
+                pushToastClearTask = Task {
                     try? await Task.sleep(for: .seconds(3))
+                    guard !Task.isCancelled else { return }
                     vm.pushResult = nil
                 }
             }
