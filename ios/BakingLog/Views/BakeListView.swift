@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct BakeListView: View {
-    @StateObject private var vm = BakeListViewModel()
-    @ObservedObject private var network = NetworkMonitor.shared
+    @State private var vm = BakeListViewModel()
+    private let network = NetworkMonitor.shared
     @State private var showingNewBake = false
     @State private var pushToastClearTask: Task<Void, Never>?
 
@@ -86,6 +86,7 @@ struct BakeListView: View {
                         }
                     }
                     .disabled(vm.isPushing)
+                    .accessibilityLabel("Push Webhooks")
 
                     Button {
                         showingNewBake = true
@@ -94,6 +95,7 @@ struct BakeListView: View {
                             .padding(8)
                             .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("New Bake")
                 }
             }
             ToolbarItem(placement: .navigationBarLeading) {
@@ -102,6 +104,7 @@ struct BakeListView: View {
                 } label: {
                     Image(systemName: "gearshape")
                 }
+                .accessibilityLabel("Settings")
             }
         }
         .sheet(isPresented: $showingNewBake) {
@@ -141,16 +144,18 @@ struct BakeListView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let result = vm.pushResult {
-                Text(result)
-                    .font(.footnote.bold())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.easeInOut, value: vm.pushResult)
+            ZStack {
+                if let result = vm.pushResult {
+                    Text(result)
+                        .font(.footnote.bold())
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut, value: vm.pushResult)
         }
     }
 }

@@ -16,6 +16,10 @@ ios/build/
 *.dSYM.zip
 *.dSYM
 
+# Agent skills (skills-lock.json stays tracked)
+.agents/
+.claude/
+
 # Env
 .env*
 !.env.example

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct WebhookSettingsView: View {
-    @StateObject private var viewModel = WebhookSettingsViewModel()
+    @State private var viewModel = WebhookSettingsViewModel()
     @State private var showingAddSheet = false
     @State private var newURL = ""
     @State private var newSecret = ""

@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
-@MainActor
-class BakeListViewModel: ObservableObject {
-    @Published var bakes: [Bake] = []
-    @Published var isLoading = false
-    @Published var isLoadingMore = false
-    @Published var hasMore = false
-    @Published var error: String?
-    @Published var isPushing = false
-    @Published var pushResult: String?
+@Observable @MainActor
+final class BakeListViewModel {
+    var bakes: [Bake] = []
+    var isLoading = false
+    var isLoadingMore = false
+    var hasMore = false
+    var error: String?
+    var isPushing = false
+    var pushResult: String?
 
     private let pageSize = 50
 

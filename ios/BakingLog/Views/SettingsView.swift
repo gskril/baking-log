@@ -7,6 +7,13 @@ struct SettingsView: View {
     @AppStorage("api_key", store: AppGroup.sharedDefaults)
     private var apiKey = ""
 
+    @FocusState private var focusedField: Field?
+
+    enum Field: Hashable {
+        case apiURL
+        case apiKey
+    }
+
     /// Non-blocking warning when the API URL doesn't look like an http(s) URL.
     private var apiURLWarning: String? {
         let trimmed = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -25,6 +32,7 @@ struct SettingsView: View {
         Form {
             Section {
                 TextField("API URL", text: $apiBaseURL)
+                    .focused($focusedField, equals: .apiURL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
@@ -45,6 +53,7 @@ struct SettingsView: View {
 
             Section {
                 SecureField("API Key (optional)", text: $apiKey)
+                    .focused($focusedField, equals: .apiKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             } header: {
@@ -65,7 +74,7 @@ struct SettingsView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    focusedField = nil
                 }
             }
         }

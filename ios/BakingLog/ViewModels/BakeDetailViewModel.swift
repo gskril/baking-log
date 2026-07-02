@@ -2,19 +2,19 @@ import Foundation
 import PhotosUI
 import SwiftUI
 
-@MainActor
-final class BakeDetailViewModel: ObservableObject {
-    @Published var bake: Bake?
-    @Published var isLoading = true
-    @Published var loadError: String?
-    @Published var actionError: String?
-    @Published var editedNotes: String = ""
-    @Published var isSavingNotes = false
-    @Published var isSavingStep = false
-    @Published var isUploadingPhotos = false
-    @Published var newStepTime: Date = .now
-    @Published var newStepAction: String = ""
-    @Published var newStepNote: String = ""
+@Observable @MainActor
+final class BakeDetailViewModel {
+    var bake: Bake?
+    var isLoading = true
+    var loadError: String?
+    var actionError: String?
+    var editedNotes: String = ""
+    var isSavingNotes = false
+    var isSavingStep = false
+    var isUploadingPhotos = false
+    var newStepTime: Date = .now
+    var newStepAction: String = ""
+    var newStepNote: String = ""
 
     private let bakeId: String
 

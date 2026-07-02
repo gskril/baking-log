@@ -1,13 +1,14 @@
 import Foundation
 import Network
+import Observation
 
 /// Status-only connectivity monitor. Drives the offline banner — it does
 /// not queue or retry anything.
-@MainActor
-final class NetworkMonitor: ObservableObject {
+@Observable @MainActor
+final class NetworkMonitor {
     static let shared = NetworkMonitor()
 
-    @Published private(set) var isOnline = true
+    private(set) var isOnline = true
 
     private let monitor = NWPathMonitor()
 

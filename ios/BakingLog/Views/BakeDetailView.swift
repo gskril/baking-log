@@ -4,16 +4,20 @@ import PhotosUI
 struct BakeDetailView: View {
     let bakeId: String
     let initialTitle: String?
-    @StateObject private var viewModel: BakeDetailViewModel
+    @State private var viewModel: BakeDetailViewModel
     @State private var showingEdit = false
     @State private var showingAddStep = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @FocusState private var isNewStepActionFocused: Bool
+    @FocusState private var isNotesFocused: Bool
 
     init(bakeId: String, initialTitle: String?) {
         self.bakeId = bakeId
         self.initialTitle = initialTitle
-        _viewModel = StateObject(wrappedValue: BakeDetailViewModel(bakeId: bakeId))
+        // Built eagerly on every BakeDetailView init (unlike @StateObject's
+        // autoclosure) and discarded when state already exists — keep the
+        // ViewModel initializer a trivial field store.
+        _viewModel = State(initialValue: BakeDetailViewModel(bakeId: bakeId))
     }
 
     private var isShowingActionError: Binding<Bool> {
@@ -31,21 +35,23 @@ struct BakeDetailView: View {
             if viewModel.isLoading && viewModel.bake == nil {
                 ProgressView()
             } else if let bake = viewModel.bake {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Photos
-                        photosSection(bake: bake)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            // Photos
+                            photosSection(bake: bake)
 
-                        // Ingredients
-                        ingredientsSection(bake: bake)
+                            // Ingredients
+                            ingredientsSection(bake: bake)
 
-                        // Schedule
-                        scheduleSection(bake: bake)
+                            // Schedule
+                            scheduleSection(bake: bake, proxy: proxy)
 
-                        // Notes
-                        notesSection(bake: bake)
+                            // Notes
+                            notesSection(bake: bake, proxy: proxy)
+                        }
+                        .padding()
                     }
-                    .padding()
                 }
                 // Keep the keyboard up while scrolling to see the notes field;
                 // dragging down onto the keyboard still dismisses it.
@@ -157,31 +163,33 @@ struct BakeDetailView: View {
     // MARK: - Schedule Section
 
     @ViewBuilder
-    private func scheduleSection(bake: Bake) -> some View {
+    private func scheduleSection(bake: Bake, proxy: ScrollViewProxy) -> some View {
         SectionBlock(title: "Schedule") {
             if let schedule = bake.schedule, !schedule.isEmpty {
                 let dates = schedule.map(\.date)
                 ForEach(Array(schedule.enumerated()), id: \.element.id) { index, entry in
-                    if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
-                        Text(dayLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .padding(.top, index == 0 ? 0 : 6)
-                    }
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(Formatters.displayTime(entry.date))
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
+                            Text(dayLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .padding(.top, index == 0 ? 0 : 6)
+                        }
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(Formatters.displayTime(entry.date))
+                                .font(.subheadline.monospaced())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, alignment: .trailing)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.action)
-                                .font(.body)
-                            if let note = entry.note, !note.isEmpty {
-                                Text(note)
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.action)
+                                    .font(.body)
+                                if let note = entry.note, !note.isEmpty {
+                                    Text(note)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
                             }
                         }
                     }
@@ -190,14 +198,17 @@ struct BakeDetailView: View {
 
             if showingAddStep {
                 inlineAddStepForm()
+                    .id("inlineAddStep")
             } else {
                 Button {
-                    // Default to the last step's time so the new step lands on the right day.
-                    viewModel.newStepTime = bake.schedule?.last?.date ?? .now
+                    viewModel.newStepTime = .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
                     }
+                    // Nudge the form into view above the keyboard once the
+                    // insertion and keyboard-avoidance inset settle.
+                    KeyboardReveal.reveal("inlineAddStep", in: proxy)
                 } label: {
                     Label("Add Step", systemImage: "plus.circle")
                         .font(.subheadline)
@@ -210,7 +221,7 @@ struct BakeDetailView: View {
     // MARK: - Notes Section
 
     @ViewBuilder
-    private func notesSection(bake: Bake) -> some View {
+    private func notesSection(bake: Bake, proxy: ScrollViewProxy) -> some View {
         let currentNotes = bake.notes ?? ""
         let notesChanged = viewModel.editedNotes != currentNotes
 
@@ -223,6 +234,14 @@ struct BakeDetailView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(.quaternary)
+                }
+                .focused($isNotesFocused)
+                // Keyboard avoidance only keeps the focused field visible;
+                // the Reset/Save row below it would stay under the keyboard.
+                .onChange(of: isNotesFocused) {
+                    if isNotesFocused {
+                        KeyboardReveal.reveal("notesActions", in: proxy)
+                    }
                 }
 
             HStack {
@@ -245,6 +264,7 @@ struct BakeDetailView: View {
                 }
                 .disabled(!notesChanged || viewModel.isSavingNotes)
             }
+            .id("notesActions")
         }
     }
 
@@ -260,8 +280,7 @@ struct BakeDetailView: View {
                 .textInputAutocapitalization(.sentences)
                 .textFieldStyle(.roundedBorder)
 
-            DatePicker("", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
+            CompactDateTimePicker(date: $viewModel.newStepTime)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $viewModel.newStepNote)
@@ -334,28 +353,33 @@ struct PhotoCarousel: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(photos) { photo in
-                    AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
-                            Rectangle()
-                                .fill(.quaternary)
-                                .overlay {
-                                    Image(systemName: "photo")
-                                        .foregroundStyle(.secondary)
-                                }
-                        default:
-                            Rectangle()
-                                .fill(.quaternary)
-                                .overlay { ProgressView() }
+                    Button {
+                        selectedPhoto = photo
+                    } label: {
+                        AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure:
+                                Rectangle()
+                                    .fill(.quaternary)
+                                    .overlay {
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(.secondary)
+                                    }
+                            default:
+                                Rectangle()
+                                    .fill(.quaternary)
+                                    .overlay { ProgressView() }
+                            }
                         }
+                        .frame(width: 280, height: 210)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .frame(width: 280, height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .onTapGesture { selectedPhoto = photo }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(photo.caption ?? "Photo")
                 }
             }
             .padding(.horizontal, 1)
@@ -423,6 +447,7 @@ struct FullScreenPhoto: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.white)
             }
+            .accessibilityLabel("Close")
             .padding()
             .opacity(backdropOpacity)
         }

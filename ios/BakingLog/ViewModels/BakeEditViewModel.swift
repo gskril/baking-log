@@ -2,17 +2,17 @@ import Foundation
 import PhotosUI
 import SwiftUI
 
-@MainActor
-class BakeEditViewModel: ObservableObject {
-    @Published var title: String = ""
-    @Published var bakeDate: Date = .now
-    @Published var ingredientEntries: [EditableIngredient] = []
-    @Published var notes: String = ""
-    @Published var scheduleEntries: [EditableScheduleEntry] = []
-    @Published var existingPhotos: [Photo] = []
-    @Published var pendingPhotos: [PendingPhoto] = []
-    @Published var isSaving = false
-    @Published var error: String?
+@Observable @MainActor
+final class BakeEditViewModel {
+    var title: String = ""
+    var bakeDate: Date = .now
+    var ingredientEntries: [EditableIngredient] = []
+    var notes: String = ""
+    var scheduleEntries: [EditableScheduleEntry] = []
+    var existingPhotos: [Photo] = []
+    var pendingPhotos: [PendingPhoto] = []
+    var isSaving = false
+    var error: String?
 
     private var existingBakeId: String?
 
@@ -115,9 +115,7 @@ class BakeEditViewModel: ObservableObject {
     // MARK: - Schedule CRUD
 
     func addScheduleEntry() {
-        // Default to the last entry's time so consecutive steps land on the same day.
-        let defaultTime = scheduleEntries.last?.timeDate ?? .now
-        scheduleEntries.append(EditableScheduleEntry(timeDate: defaultTime, action: "", note: ""))
+        scheduleEntries.append(EditableScheduleEntry(timeDate: .now, action: "", note: ""))
     }
 
     func removeScheduleEntry(at offsets: IndexSet) {
