@@ -17,8 +17,18 @@ struct BakeDetailView: View {
     @State private var editedNotes: String = ""
     @State private var isSavingNotes = false
     @State private var loadError: String?
+    @State private var actionError: String?
     @FocusState private var isNewStepActionFocused: Bool
-    @ObservedObject private var syncManager = SyncManager.shared
+
+    private var isShowingActionError: Binding<Bool> {
+        Binding {
+            actionError != nil
+        } set: { isPresented in
+            if !isPresented {
+                actionError = nil
+            }
+        }
+    }
 
     var body: some View {
         Group {
@@ -44,6 +54,11 @@ struct BakeDetailView: View {
                 // Keep the keyboard up while scrolling to see the notes field;
                 // dragging down onto the keyboard still dismisses it.
                 .scrollDismissesKeyboard(.interactively)
+                .alert("Something Went Wrong", isPresented: isShowingActionError, presenting: actionError) { _ in
+                    Button("OK", role: .cancel) {}
+                } message: { error in
+                    Text(error)
+                }
             } else {
                 ContentUnavailableView {
                     Label("Bake Unavailable", systemImage: "wifi.slash")
@@ -61,15 +76,8 @@ struct BakeDetailView: View {
         .toolbar {
             if bake != nil {
                 ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 12) {
-                        if syncManager.hasPendingChanges(for: bakeId) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .foregroundStyle(.orange)
-                                .font(.caption)
-                        }
-                        Button("Edit") {
-                            showingEdit = true
-                        }
+                    Button("Edit") {
+                        showingEdit = true
                     }
                 }
             }
@@ -291,13 +299,11 @@ struct BakeDetailView: View {
     private func saveNewStep() async {
         guard let bake else { return }
         isSavingStep = true
+        defer { isSavingStep = false }
 
         let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAction.isEmpty else {
-            isSavingStep = false
-            return
-        }
+        guard !trimmedAction.isEmpty else { return }
 
         // Build schedule: existing entries + new entry
         var schedulePayload = (bake.schedule ?? []).map {
@@ -318,35 +324,18 @@ struct BakeDetailView: View {
 
         do {
             let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
-            syncManager.clearPendingUpdate(for: bake.id)
             self.bake = updated
             editedNotes = updated.notes ?? ""
+            resetAddStep()
         } catch {
-            // Offline: apply optimistic local update
-            let newScheduleEntry = ScheduleEntry(
-                id: "local-\(UUID().uuidString)",
-                bakeId: bake.id,
-                occursAt: Formatters.isoDateTime.string(from: newStepTime),
-                action: trimmedAction,
-                note: trimmedNote.isEmpty ? nil : trimmedNote,
-                sortOrder: (bake.schedule?.count ?? 0)
-            )
-            var updated = bake
-            var schedule = updated.schedule ?? []
-            schedule.append(newScheduleEntry)
-            updated.schedule = schedule
-            self.bake = updated
-
-            syncManager.queueUpdate(bakeId: bake.id, payload: payload)
+            actionError = error.localizedDescription
         }
-
-        resetAddStep()
-        isSavingStep = false
     }
 
     private func saveNotes() async {
         guard let bake else { return }
         isSavingNotes = true
+        defer { isSavingNotes = false }
 
         let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         let noteValue = trimmed.isEmpty ? nil : trimmed
@@ -362,20 +351,11 @@ struct BakeDetailView: View {
 
         do {
             let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
-            syncManager.clearPendingUpdate(for: bake.id)
             self.bake = updated
             editedNotes = updated.notes ?? ""
         } catch {
-            // Offline: apply optimistic local update
-            var updated = bake
-            updated.notes = noteValue
-            self.bake = updated
-            editedNotes = noteValue ?? ""
-
-            syncManager.queueUpdate(bakeId: bake.id, payload: payload)
+            actionError = error.localizedDescription
         }
-
-        isSavingNotes = false
     }
 
     private func uploadSelectedPhotos() async {
@@ -389,25 +369,36 @@ struct BakeDetailView: View {
         let items = selectedPhotos
         selectedPhotos.removeAll()
 
-        var failedData: [Data] = []
         var updatedBake = bake
+        var failureCount = 0
+        var lastError: Error?
 
         for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
             do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    failureCount += 1
+                    continue
+                }
                 let photo = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+
                 var photos = updatedBake.photos ?? []
                 photos.append(photo)
                 updatedBake.photos = photos
             } catch {
-                failedData.append(data)
+                failureCount += 1
+                lastError = error
             }
         }
 
         self.bake = updatedBake
 
-        if !failedData.isEmpty {
-            syncManager.queuePhotoUpload(bakeId: bake.id, imageDataItems: failedData)
+        if failureCount > 0 {
+            let failureText = failureCount == 1 ? "1 photo failed to upload." : "\(failureCount) photos failed to upload."
+            if let lastError {
+                actionError = "\(failureText) \(lastError.localizedDescription)"
+            } else {
+                actionError = failureText
+            }
         }
 
         isUploadingPhotos = false
@@ -444,19 +435,17 @@ struct BakeDetailView: View {
 
         do {
             let loaded = try await APIClient.shared.getBake(id: bakeId)
-            let merged = syncManager.mergedBakeWithPendingChanges(loaded)
-            bake = merged
-            editedNotes = merged.notes ?? ""
+            bake = loaded
+            editedNotes = loaded.notes ?? ""
         } catch {
-            if let currentBake = bake {
-                let merged = syncManager.mergedBakeWithPendingChanges(currentBake)
-                bake = merged
-                editedNotes = merged.notes ?? ""
-            } else if let pendingBake = syncManager.localBakeFromPendingUpdate(bakeId: bakeId) {
-                bake = pendingBake
-                editedNotes = pendingBake.notes ?? ""
+            if bake == nil {
+                loadError = error.localizedDescription
+            } else {
+                // The full-screen error only renders with no bake loaded; a
+                // failed refresh must surface through the alert instead of
+                // silently showing stale data.
+                actionError = "Couldn't refresh. \(error.localizedDescription)"
             }
-            loadError = error.localizedDescription
         }
         isLoading = false
     }

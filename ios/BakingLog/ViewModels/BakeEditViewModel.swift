@@ -9,14 +9,11 @@ class BakeEditViewModel: ObservableObject {
     @Published var notes: String = ""
     @Published var scheduleEntries: [EditableScheduleEntry] = []
     @Published var existingPhotos: [Photo] = []
-    @Published var pendingExistingImages: [Data] = []
     @Published var newImages: [UIImage] = []
     @Published var isSaving = false
     @Published var error: String?
-    @Published var savedOffline = false
 
     private var existingBakeId: String?
-    private var pendingBakeId: String?
 
     enum IngredientUnit: String, CaseIterable, Identifiable {
         case grams = "g"
@@ -48,17 +45,15 @@ class BakeEditViewModel: ObservableObject {
         var notes: String?
     }
 
-    var isEditing: Bool { existingBakeId != nil || pendingBakeId != nil }
+    var isEditing: Bool { existingBakeId != nil }
 
     // MARK: - Load Existing
 
     func loadExisting(_ bake: Bake) {
         existingBakeId = bake.id
-        pendingBakeId = nil
         title = bake.title ?? ""
         notes = bake.notes ?? ""
         existingPhotos = bake.photos ?? []
-        pendingExistingImages = []
         newImages = []
         error = nil
 
@@ -69,42 +64,13 @@ class BakeEditViewModel: ObservableObject {
         }
     }
 
-    func loadExistingPending(_ pending: SyncManager.PendingBake) {
-        existingBakeId = nil
-        pendingBakeId = pending.id
-        title = pending.payload.title ?? ""
-        notes = pending.payload.notes ?? ""
-        existingPhotos = []
-        newImages = []
-        error = nil
-
-        bakeDate = Formatters.isoDay.date(from: pending.payload.bakeDate) ?? .now
-
-        ingredientEntries = (pending.payload.ingredients ?? []).map {
-            EditableIngredient(
-                name: $0.name,
-                amountValue: $0.amountValue.map(Formatters.amountString) ?? "",
-                unit: $0.unit.flatMap(IngredientUnit.init(rawValue:)) ?? .grams,
-                note: $0.note ?? ""
-            )
-        }
-
-        scheduleEntries = (pending.payload.schedule ?? []).map {
-            EditableScheduleEntry(timeDate: $0.date ?? .now, action: $0.action, note: $0.note ?? "")
-        }
-
-        pendingExistingImages = pending.imageDataItems
-    }
-
     func loadPrefill(_ prefill: Prefill) {
         existingBakeId = nil
-        pendingBakeId = nil
         title = prefill.title
         notes = prefill.notes ?? ""
         ingredientEntries = prefill.ingredientEntries
         scheduleEntries = []
         existingPhotos = []
-        pendingExistingImages = []
         newImages = []
         error = nil
         bakeDate = .now
@@ -156,7 +122,6 @@ class BakeEditViewModel: ObservableObject {
     func save() async -> Bake? {
         isSaving = true
         error = nil
-        savedOffline = false
 
         let schedule = scheduleEntries
             .filter { !$0.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -197,102 +162,43 @@ class BakeEditViewModel: ObservableObject {
         )
 
         // Convert images to Data on @MainActor (UIImage is not Sendable)
-        let newImageData = newImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
-
-        // If editing a pending bake, update locally — no API call
-        if let pendingId = pendingBakeId {
-            let allImageData = pendingExistingImages + newImageData
-            SyncManager.shared.updatePending(id: pendingId, payload: payload, imageDataItems: allImageData)
-            isSaving = false
-            return Bake(
-                id: "pending",
-                title: payload.title,
-                bakeDate: payload.bakeDate,
-
-                ingredients: nil,
-                ingredientCount: nil,
-                notes: payload.notes,
-                schedule: nil,
-                photos: nil,
-                createdAt: Date.now.ISO8601Format(),
-                updatedAt: Date.now.ISO8601Format()
-            )
-        }
+        let uploads = newImages.map { ($0, $0.jpegData(compressionQuality: 0.8)) }
 
         do {
             let bake: Bake
             if let existingId = existingBakeId {
                 bake = try await APIClient.shared.updateBake(id: existingId, payload)
-                SyncManager.shared.clearPendingUpdate(for: existingId)
             } else {
                 bake = try await APIClient.shared.createBake(payload)
+                // The bake now exists server-side; a retry after a photo
+                // failure must update it, not create a duplicate.
+                existingBakeId = bake.id
             }
 
-            var failedImageData: [Data] = []
-            for data in newImageData {
+            var failedCount = 0
+            var lastUploadError: Error?
+            for (image, data) in uploads {
+                guard let data else { continue }
                 do {
                     _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                    // Only images that haven't uploaded yet are retried.
+                    newImages.removeAll { $0 === image }
                 } catch {
-                    failedImageData.append(data)
+                    failedCount += 1
+                    lastUploadError = error
                 }
-            }
-
-            if !failedImageData.isEmpty {
-                SyncManager.shared.queuePhotoUpload(bakeId: bake.id, imageDataItems: failedImageData)
-                savedOffline = true
             }
 
             isSaving = false
+
+            if failedCount > 0, let lastUploadError {
+                let noun = failedCount == 1 ? "1 photo" : "\(failedCount) photos"
+                error = "Bake saved, but \(noun) failed to upload. \(lastUploadError.localizedDescription)"
+                return nil
+            }
+
             return bake
         } catch {
-            if existingBakeId == nil {
-                // Creating a new bake offline — queue it
-                SyncManager.shared.queueBake(payload: payload, imageDataItems: newImageData)
-                savedOffline = true
-                isSaving = false
-                return Bake(
-                    id: "pending",
-                    title: payload.title,
-                    bakeDate: payload.bakeDate,
-
-                    ingredients: nil,
-                    ingredientCount: nil,
-                    notes: payload.notes,
-                    schedule: nil,
-                    photos: nil,
-                    createdAt: Date.now.ISO8601Format(),
-                    updatedAt: Date.now.ISO8601Format()
-                )
-            } else if let existingId = existingBakeId {
-                // Updating an existing bake offline — queue update + photos
-                SyncManager.shared.queueUpdate(bakeId: existingId, payload: payload)
-                if !newImageData.isEmpty {
-                    SyncManager.shared.queuePhotoUpload(bakeId: existingId, imageDataItems: newImageData)
-                }
-                savedOffline = true
-                isSaving = false
-
-                let ingredientModels = ingredients.enumerated().map { i, ing in
-                    Ingredient(id: "local-\(i)", bakeId: existingId, name: ing.name, amountValue: ing.amountValue, unit: ing.unit, note: ing.note, sortOrder: i)
-                }
-                let scheduleModels = schedule.enumerated().map { i, entry in
-                    ScheduleEntry(id: "local-\(i)", bakeId: existingId, occursAt: entry.occursAt, action: entry.action, note: entry.note, sortOrder: i)
-                }
-
-                return Bake(
-                    id: existingId,
-                    title: payload.title,
-                    bakeDate: payload.bakeDate,
-
-                    ingredients: ingredientModels.isEmpty ? nil : ingredientModels,
-                    ingredientCount: ingredientModels.isEmpty ? nil : ingredientModels.count,
-                    notes: payload.notes,
-                    schedule: scheduleModels.isEmpty ? nil : scheduleModels,
-                    photos: existingPhotos.isEmpty ? nil : existingPhotos,
-                    createdAt: Date.now.ISO8601Format(),
-                    updatedAt: Date.now.ISO8601Format()
-                )
-            }
             self.error = error.localizedDescription
             isSaving = false
             return nil

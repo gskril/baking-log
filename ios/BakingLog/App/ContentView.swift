@@ -21,5 +21,6 @@ struct ContentView: View {
                 Label("Calculator", systemImage: "percent")
             }
         }
+        .offlineBanner()
     }
 }

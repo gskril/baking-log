@@ -2,14 +2,14 @@ import SwiftUI
 
 struct BakeListView: View {
     @StateObject private var vm = BakeListViewModel()
-    @ObservedObject private var syncManager = SyncManager.shared
+    @ObservedObject private var network = NetworkMonitor.shared
     @State private var showingNewBake = false
 
     var body: some View {
         Group {
-            if vm.isLoading && vm.bakes.isEmpty && syncManager.pendingBakes.isEmpty {
+            if vm.isLoading && vm.bakes.isEmpty {
                 ProgressView()
-            } else if let error = vm.error, vm.bakes.isEmpty, syncManager.pendingBakes.isEmpty {
+            } else if let error = vm.error, vm.bakes.isEmpty {
                 ContentUnavailableView {
                     Label("Connection Error", systemImage: "wifi.slash")
                 } description: {
@@ -19,7 +19,7 @@ struct BakeListView: View {
                         Task { await vm.load() }
                     }
                 }
-            } else if vm.bakes.isEmpty && syncManager.pendingBakes.isEmpty {
+            } else if vm.bakes.isEmpty {
                 ContentUnavailableView {
                     Label("No Bakes Yet", systemImage: "oven")
                 } description: {
@@ -27,50 +27,6 @@ struct BakeListView: View {
                 }
             } else {
                 List {
-                    // Pending bakes waiting to sync
-                    if !syncManager.pendingBakes.isEmpty {
-                        Section {
-                            ForEach(syncManager.pendingBakes) { pending in
-                                NavigationLink {
-                                    PendingBakeDetailView(pendingId: pending.id)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(pending.payload.title ?? "Untitled Bake")
-                                                .font(.headline)
-                                            Text(pending.displayDate)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        if syncManager.isSyncing {
-                                            ProgressView()
-                                        } else {
-                                            Image(systemName: "arrow.triangle.2.circlepath")
-                                                .foregroundStyle(.orange)
-                                        }
-                                    }
-                                    .padding(.vertical, 2)
-                                }
-                            }
-                            .onDelete { offsets in
-                                for i in offsets {
-                                    syncManager.removePending(id: syncManager.pendingBakes[i].id)
-                                }
-                            }
-                        } header: {
-                            HStack {
-                                Text("Pending Sync")
-                                if syncManager.isSyncing {
-                                    Text("Syncing...")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-
-                    // Server bakes
                     ForEach(vm.bakes) { bake in
                         NavigationLink(value: bake) {
                             BakeRow(bake: bake)
@@ -114,18 +70,10 @@ struct BakeListView: View {
                 }
             }
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 12) {
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-
-                    if !syncManager.isOnline {
-                        Image(systemName: "wifi.slash")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
                 }
             }
         }
@@ -136,13 +84,17 @@ struct BakeListView: View {
             }
         }
         .refreshable {
-            if syncManager.hasAnyPending {
-                await syncManager.syncPending()
-            }
             await vm.load()
         }
         .task {
             await vm.load()
+        }
+        // Recover automatically when connectivity returns instead of leaving
+        // the error state up until a manual retry.
+        .onChange(of: network.isOnline) { _, online in
+            if online && vm.bakes.isEmpty {
+                Task { await vm.load() }
+            }
         }
         .onChange(of: vm.pushResult) {
             // Clear push result after 3 seconds
