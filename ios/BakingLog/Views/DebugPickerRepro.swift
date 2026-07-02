@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if DEBUG
 // Test host for the schedule-row date/time picker (see
 // CompactDateTimePickerUITests). Launched with `-datePickerRepro` instead of
 // ContentView; presents the real BakeEditView in a sheet, as the app does,
@@ -36,3 +37,4 @@ struct DebugPickerRepro: View {
             }
     }
 }
+#endif
