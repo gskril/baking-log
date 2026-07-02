@@ -8,7 +8,6 @@ struct BakeEditView: View {
     @State private var hasLoadedInitialData = false
     @FocusState private var focusedIngredientField: IngredientField?
     let existing: Bake?
-    let existingPending: SyncManager.PendingBake?
     let prefill: BakeEditViewModel.Prefill?
     let onDismiss: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -20,21 +19,12 @@ struct BakeEditView: View {
 
     init(existing: Bake? = nil, onDismiss: @escaping () -> Void) {
         self.existing = existing
-        self.existingPending = nil
-        self.prefill = nil
-        self.onDismiss = onDismiss
-    }
-
-    init(existingPending: SyncManager.PendingBake, onDismiss: @escaping () -> Void) {
-        self.existing = nil
-        self.existingPending = existingPending
         self.prefill = nil
         self.onDismiss = onDismiss
     }
 
     init(prefill: BakeEditViewModel.Prefill, onDismiss: @escaping () -> Void) {
         self.existing = nil
-        self.existingPending = nil
         self.prefill = prefill
         self.onDismiss = onDismiss
     }
@@ -101,33 +91,6 @@ struct BakeEditView: View {
 
                 // Photos
                 Section("Photos") {
-                    // Pending local photos (from offline queue)
-                    if !vm.pendingExistingImages.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(vm.pendingExistingImages.indices, id: \.self) { i in
-                                    if let uiImage = UIImage(data: vm.pendingExistingImages[i]) {
-                                        Image(uiImage: uiImage)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 80, height: 80)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                            .overlay(alignment: .topTrailing) {
-                                                Button {
-                                                    vm.pendingExistingImages.remove(at: i)
-                                                } label: {
-                                                    Image(systemName: "minus.circle.fill")
-                                                        .font(.caption)
-                                                        .foregroundStyle(.red)
-                                                }
-                                                .offset(x: 4, y: -4)
-                                            }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     // Existing server photos
                     if !vm.existingPhotos.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -242,8 +205,6 @@ struct BakeEditView: View {
 
                 if let existing {
                     vm.loadExisting(existing)
-                } else if let existingPending {
-                    vm.loadExistingPending(existingPending)
                 } else if let prefill {
                     vm.loadPrefill(prefill)
                 }
