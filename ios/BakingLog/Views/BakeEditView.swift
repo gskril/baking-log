@@ -2,19 +2,24 @@ import SwiftUI
 import PhotosUI
 
 struct BakeEditView: View {
-    @StateObject private var vm = BakeEditViewModel()
+    @State private var vm = BakeEditViewModel()
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingIngredientFocusId: UUID?
     @State private var hasLoadedInitialData = false
-    @FocusState private var focusedIngredientField: IngredientField?
+    @FocusState private var focusedField: Field?
     let existing: Bake?
     let prefill: BakeEditViewModel.Prefill?
     let onDismiss: () -> Void
     @Environment(\.dismiss) private var dismiss
 
-    enum IngredientField: Hashable {
-        case name(UUID)
-        case amount(UUID)
+    enum Field: Hashable {
+        case title
+        case notes
+        case ingredientName(UUID)
+        case ingredientAmount(UUID)
+        case ingredientNote(UUID)
+        case scheduleAction(UUID)
+        case scheduleNote(UUID)
     }
 
     init(existing: Bake? = nil, onDismiss: @escaping () -> Void) {
@@ -35,6 +40,7 @@ struct BakeEditView: View {
                 // Basic Info
                 Section {
                     TextField("Title", text: $vm.title)
+                        .focused($focusedField, equals: .title)
                         .textInputAutocapitalization(.sentences)
                         .overlay(alignment: .trailing) {
                             if !vm.title.isEmpty {
@@ -56,7 +62,7 @@ struct BakeEditView: View {
                     ForEach($vm.ingredientEntries) { $entry in
                         IngredientEntryRow(
                             entry: $entry,
-                            focusedField: $focusedIngredientField
+                            focusedField: $focusedField
                         )
                     }
                     .onDelete(perform: vm.removeIngredient)
@@ -75,7 +81,10 @@ struct BakeEditView: View {
                 // Schedule
                 Section {
                     ForEach($vm.scheduleEntries) { $entry in
-                        ScheduleEntryRow(entry: $entry)
+                        ScheduleEntryRow(
+                            entry: $entry,
+                            focusedField: $focusedField
+                        )
                     }
                     .onDelete(perform: vm.removeScheduleEntry)
                     .onMove(perform: vm.moveScheduleEntry)
@@ -165,6 +174,7 @@ struct BakeEditView: View {
                     // fixed-height TextEditor, which scrolls internally and lets
                     // the caret drift out of view under the keyboard).
                     TextField("Notes", text: $vm.notes, axis: .vertical)
+                        .focused($focusedField, equals: .notes)
                         .lineLimit(7...)
                         .textInputAutocapitalization(.sentences)
                 }
@@ -198,8 +208,7 @@ struct BakeEditView: View {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
-                        focusedIngredientField = nil
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        focusedField = nil
                     }
                 }
             }
@@ -217,7 +226,7 @@ struct BakeEditView: View {
                 guard let id = pendingIngredientFocusId else { return }
                 pendingIngredientFocusId = nil
                 DispatchQueue.main.async {
-                    focusedIngredientField = .name(id)
+                    focusedField = .ingredientName(id)
                 }
             }
             .interactiveDismissDisabled(vm.isSaving)
@@ -244,8 +253,7 @@ struct BakeEditView: View {
 
     private func submitPrimaryAction() {
         // Commit any in-flight field edits before building the save payload.
-        focusedIngredientField = nil
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        focusedField = nil
 
         Task { @MainActor in
             await Task.yield()
@@ -268,21 +276,21 @@ struct BakeEditView: View {
 
 struct IngredientEntryRow: View {
     @Binding var entry: BakeEditViewModel.EditableIngredient
-    var focusedField: FocusState<BakeEditView.IngredientField?>.Binding
+    var focusedField: FocusState<BakeEditView.Field?>.Binding
 
     var body: some View {
         VStack(spacing: 8) {
             HStack {
                 TextField("Name", text: $entry.name)
-                    .focused(focusedField, equals: .name(entry.id))
+                    .focused(focusedField, equals: .ingredientName(entry.id))
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.next)
                     .onSubmit {
-                        focusedField.wrappedValue = .amount(entry.id)
+                        focusedField.wrappedValue = .ingredientAmount(entry.id)
                     }
 
                 TextField("Amount", text: $entry.amountValue)
-                    .focused(focusedField, equals: .amount(entry.id))
+                    .focused(focusedField, equals: .ingredientAmount(entry.id))
                     .frame(width: 72)
                     .keyboardType(.decimalPad)
                     .textInputAutocapitalization(.never)
@@ -300,6 +308,7 @@ struct IngredientEntryRow: View {
 
             if !entry.note.isEmpty || entry.name.isEmpty {
                 TextField("Note (optional)", text: $entry.note)
+                    .focused(focusedField, equals: .ingredientNote(entry.id))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -309,17 +318,20 @@ struct IngredientEntryRow: View {
 
 struct ScheduleEntryRow: View {
     @Binding var entry: BakeEditViewModel.EditableScheduleEntry
+    var focusedField: FocusState<BakeEditView.Field?>.Binding
 
     var body: some View {
         VStack(spacing: 8) {
             TextField("Action (e.g., Mix, fold, shape)", text: $entry.action)
+                .focused(focusedField, equals: .scheduleAction(entry.id))
                 .textInputAutocapitalization(.sentences)
 
-            DatePicker("", selection: $entry.timeDate, displayedComponents: [.date, .hourAndMinute])
+            DatePicker("Time", selection: $entry.timeDate, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $entry.note)
+                .focused(focusedField, equals: .scheduleNote(entry.id))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

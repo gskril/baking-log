@@ -1,10 +1,10 @@
 import Foundation
 import SwiftUI
 
-@MainActor
-class CalculatorViewModel: ObservableObject {
-    @Published var ingredients: [Ingredient] = []
-    @Published var targetDoughWeight: String = ""
+@Observable @MainActor
+final class CalculatorViewModel {
+    var ingredients: [Ingredient] = []
+    var targetDoughWeight: String = ""
 
     struct Ingredient: Identifiable {
         let id = UUID()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CalculatorView: View {
-    @StateObject private var vm = CalculatorViewModel()
+    @State private var vm = CalculatorViewModel()
     @FocusState private var focusedField: IngredientField?
     @State private var pendingIngredientFocusId: UUID?
     @State private var presentedDraft: PrefillDraft?
@@ -10,6 +10,7 @@ struct CalculatorView: View {
     enum IngredientField: Hashable {
         case name(UUID)
         case weight(UUID)
+        case target
     }
 
     private struct PrefillDraft: Identifiable {
@@ -61,6 +62,7 @@ struct CalculatorView: View {
             Section("Scale") {
                 HStack {
                     TextField("Target weight (g)", text: $vm.targetDoughWeight)
+                        .focused($focusedField, equals: .target)
 
                     Button("Dough") {
                         vm.scaleToTarget()
@@ -120,7 +122,6 @@ struct CalculatorView: View {
     private func presentNewBakeFromCalculator() {
         // Force any active text field edit to commit before reading vm.ingredients.
         focusedField = nil
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 
         Task { @MainActor in
             await Task.yield()
@@ -190,7 +191,7 @@ struct IngredientRow: View {
                         focusedField.wrappedValue = .weight(ingredient.id)
                     }
 
-                Picker("", selection: $ingredient.role) {
+                Picker("Role", selection: $ingredient.role) {
                     ForEach(CalculatorViewModel.Ingredient.Role.allCases, id: \.self) { role in
                         Text(role.rawValue).tag(role)
                     }

@@ -4,7 +4,7 @@ import PhotosUI
 struct BakeDetailView: View {
     let bakeId: String
     let initialTitle: String?
-    @StateObject private var viewModel: BakeDetailViewModel
+    @State private var viewModel: BakeDetailViewModel
     @State private var showingEdit = false
     @State private var showingAddStep = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -13,7 +13,7 @@ struct BakeDetailView: View {
     init(bakeId: String, initialTitle: String?) {
         self.bakeId = bakeId
         self.initialTitle = initialTitle
-        _viewModel = StateObject(wrappedValue: BakeDetailViewModel(bakeId: bakeId))
+        _viewModel = State(initialValue: BakeDetailViewModel(bakeId: bakeId))
     }
 
     private var isShowingActionError: Binding<Bool> {
@@ -162,26 +162,28 @@ struct BakeDetailView: View {
             if let schedule = bake.schedule, !schedule.isEmpty {
                 let dates = schedule.map(\.date)
                 ForEach(Array(schedule.enumerated()), id: \.element.id) { index, entry in
-                    if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
-                        Text(dayLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .padding(.top, index == 0 ? 0 : 6)
-                    }
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(Formatters.displayTime(entry.date))
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
+                            Text(dayLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .padding(.top, index == 0 ? 0 : 6)
+                        }
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(Formatters.displayTime(entry.date))
+                                .font(.subheadline.monospaced())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, alignment: .trailing)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.action)
-                                .font(.body)
-                            if let note = entry.note, !note.isEmpty {
-                                Text(note)
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.action)
+                                    .font(.body)
+                                if let note = entry.note, !note.isEmpty {
+                                    Text(note)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
                             }
                         }
                     }
@@ -260,7 +262,7 @@ struct BakeDetailView: View {
                 .textInputAutocapitalization(.sentences)
                 .textFieldStyle(.roundedBorder)
 
-            DatePicker("", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
+            DatePicker("Time", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -334,28 +336,33 @@ struct PhotoCarousel: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(photos) { photo in
-                    AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
-                            Rectangle()
-                                .fill(.quaternary)
-                                .overlay {
-                                    Image(systemName: "photo")
-                                        .foregroundStyle(.secondary)
-                                }
-                        default:
-                            Rectangle()
-                                .fill(.quaternary)
-                                .overlay { ProgressView() }
+                    Button {
+                        selectedPhoto = photo
+                    } label: {
+                        AsyncImage(url: APIClient.shared.photoURL(for: photo.id)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure:
+                                Rectangle()
+                                    .fill(.quaternary)
+                                    .overlay {
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(.secondary)
+                                    }
+                            default:
+                                Rectangle()
+                                    .fill(.quaternary)
+                                    .overlay { ProgressView() }
+                            }
                         }
+                        .frame(width: 280, height: 210)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .frame(width: 280, height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .onTapGesture { selectedPhoto = photo }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(photo.caption ?? "Photo")
                 }
             }
             .padding(.horizontal, 1)

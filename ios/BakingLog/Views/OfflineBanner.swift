@@ -5,7 +5,7 @@ import SwiftUI
 /// reflows the navigation bar or tints the status bar. Applied to the root
 /// TabView and to sheets, which present above it.
 struct OfflineBannerModifier: ViewModifier {
-    @ObservedObject private var network = NetworkMonitor.shared
+    private let network = NetworkMonitor.shared
 
     func body(content: Content) -> some View {
         content
