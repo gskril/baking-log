@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Env } from '../types';
 import { fireWebhooks } from '../services/webhook';
-import { parseJsonBody } from '../utils/validate';
+import { createWebhookSchema, parseBody } from '../utils/validate';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -19,30 +19,6 @@ function toResponse(row: WebhookRow) {
   return { ...row, has_secret: row.has_secret === 1 };
 }
 
-/** Returns an error message, or null if the webhook URL is valid. */
-function validateWebhookURL(url: unknown, requestURL: string): string | null {
-  if (typeof url !== 'string') return 'url is required';
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return 'url must be a valid absolute URL';
-  }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return 'url must use http or https';
-  }
-
-  // A webhook pointing back at this API (e.g. /api/webhooks/push) would make
-  // every push re-trigger itself.
-  if (parsed.host === new URL(requestURL).host) {
-    return 'url must not point at this API';
-  }
-
-  return null;
-}
-
 // List webhooks
 app.get('/', async (c) => {
   const webhooks = await c.env.DB.prepare(
@@ -54,11 +30,16 @@ app.get('/', async (c) => {
 
 // Create a webhook
 app.post('/', async (c) => {
-  const body = await parseJsonBody<{ url?: unknown; secret?: string }>(c.req.raw);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = await parseBody(c.req.raw, createWebhookSchema);
+  if (parsed.error !== undefined) return c.json({ error: parsed.error }, 400);
+  const body = parsed.data;
 
-  const invalid = validateWebhookURL(body.url, c.req.url);
-  if (invalid) return c.json({ error: invalid }, 400);
+  // A webhook pointing back at this API (e.g. /api/webhooks/push) would make
+  // every push re-trigger itself. Needs the request context, so it lives
+  // outside the schema.
+  if (new URL(body.url).host === new URL(c.req.url).host) {
+    return c.json({ error: 'url must not point at this API' }, 400);
+  }
 
   const id = crypto.randomUUID();
 

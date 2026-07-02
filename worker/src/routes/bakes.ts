@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { Env, BakeListItem, CreateBakeRequest, UpdateBakeRequest, Photo } from '../types';
+import { Env, BakeListItem, Photo } from '../types';
 import { getBakeWithDetails } from '../db/queries';
-import { parseJsonBody, validateBakeRequest } from '../utils/validate';
+import { CreateBakeRequest, createBakeSchema, parseBody, updateBakeSchema } from '../utils/validate';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -78,10 +78,9 @@ app.get('/:id', async (c) => {
 
 // Create a new bake
 app.post('/', async (c) => {
-  const body = await parseJsonBody<CreateBakeRequest>(c.req.raw);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
-  const invalid = validateBakeRequest(body, true);
-  if (invalid) return c.json({ error: invalid }, 400);
+  const parsed = await parseBody(c.req.raw, createBakeSchema);
+  if (parsed.error !== undefined) return c.json({ error: parsed.error }, 400);
+  const body = parsed.data;
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -100,10 +99,9 @@ app.post('/', async (c) => {
 // Update a bake
 app.put('/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await parseJsonBody<UpdateBakeRequest>(c.req.raw);
-  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
-  const invalid = validateBakeRequest(body, false);
-  if (invalid) return c.json({ error: invalid }, 400);
+  const parsed = await parseBody(c.req.raw, updateBakeSchema);
+  if (parsed.error !== undefined) return c.json({ error: parsed.error }, 400);
+  const body = parsed.data;
 
   const existing = await c.env.DB.prepare('SELECT id FROM bakes WHERE id = ?')
     .bind(id)
@@ -119,10 +117,10 @@ app.put('/:id', async (c) => {
     sets.push('title = ?');
     values.push(body.title ?? null);
   }
-  if ('bake_date' in body) {
-    // Validated above: present bake_date is always a YYYY-MM-DD string.
+  if (body.bake_date !== undefined) {
+    // Schema-validated: a present bake_date is always a YYYY-MM-DD string.
     sets.push('bake_date = ?');
-    values.push(body.bake_date!);
+    values.push(body.bake_date);
   }
   if ('notes' in body) {
     sets.push('notes = ?');

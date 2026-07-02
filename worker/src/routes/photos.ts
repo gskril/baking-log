@@ -11,7 +11,6 @@ const ALLOWED_PHOTO_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/heic': 'heic',
   'image/webp': 'webp',
-  'image/gif': 'gif',
 };
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
