@@ -162,7 +162,7 @@ class BakeEditViewModel: ObservableObject {
         )
 
         // Convert images to Data on @MainActor (UIImage is not Sendable)
-        let newImageData = newImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        let uploads = newImages.map { ($0, $0.jpegData(compressionQuality: 0.8)) }
 
         do {
             let bake: Bake
@@ -170,13 +170,33 @@ class BakeEditViewModel: ObservableObject {
                 bake = try await APIClient.shared.updateBake(id: existingId, payload)
             } else {
                 bake = try await APIClient.shared.createBake(payload)
+                // The bake now exists server-side; a retry after a photo
+                // failure must update it, not create a duplicate.
+                existingBakeId = bake.id
             }
 
-            for data in newImageData {
-                _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+            var failedCount = 0
+            var lastUploadError: Error?
+            for (image, data) in uploads {
+                guard let data else { continue }
+                do {
+                    _ = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
+                    // Only images that haven't uploaded yet are retried.
+                    newImages.removeAll { $0 === image }
+                } catch {
+                    failedCount += 1
+                    lastUploadError = error
+                }
             }
 
             isSaving = false
+
+            if failedCount > 0, let lastUploadError {
+                let noun = failedCount == 1 ? "1 photo" : "\(failedCount) photos"
+                error = "Bake saved, but \(noun) failed to upload. \(lastUploadError.localizedDescription)"
+                return nil
+            }
+
             return bake
         } catch {
             self.error = error.localizedDescription

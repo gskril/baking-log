@@ -54,7 +54,7 @@ struct BakeDetailView: View {
                 // Keep the keyboard up while scrolling to see the notes field;
                 // dragging down onto the keyboard still dismisses it.
                 .scrollDismissesKeyboard(.interactively)
-                .alert("Couldn't Save", isPresented: isShowingActionError, presenting: actionError) { _ in
+                .alert("Something Went Wrong", isPresented: isShowingActionError, presenting: actionError) { _ in
                     Button("OK", role: .cancel) {}
                 } message: { error in
                     Text(error)
@@ -438,7 +438,14 @@ struct BakeDetailView: View {
             bake = loaded
             editedNotes = loaded.notes ?? ""
         } catch {
-            loadError = error.localizedDescription
+            if bake == nil {
+                loadError = error.localizedDescription
+            } else {
+                // The full-screen error only renders with no bake loaded; a
+                // failed refresh must surface through the alert instead of
+                // silently showing stale data.
+                actionError = "Couldn't refresh. \(error.localizedDescription)"
+            }
         }
         isLoading = false
     }

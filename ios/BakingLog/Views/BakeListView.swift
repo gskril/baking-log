@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BakeListView: View {
     @StateObject private var vm = BakeListViewModel()
+    @ObservedObject private var network = NetworkMonitor.shared
     @State private var showingNewBake = false
 
     var body: some View {
@@ -87,6 +88,13 @@ struct BakeListView: View {
         }
         .task {
             await vm.load()
+        }
+        // Recover automatically when connectivity returns instead of leaving
+        // the error state up until a manual retry.
+        .onChange(of: network.isOnline) { _, online in
+            if online && vm.bakes.isEmpty {
+                Task { await vm.load() }
+            }
         }
         .onChange(of: vm.pushResult) {
             // Clear push result after 3 seconds

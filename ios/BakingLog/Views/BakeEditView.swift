@@ -186,10 +186,14 @@ struct BakeEditView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(vm.isEditing ? "Save" : "Create") {
-                        submitPrimaryAction()
+                    if vm.isSaving {
+                        ProgressView()
+                    } else {
+                        Button(vm.isEditing ? "Save" : "Create") {
+                            submitPrimaryAction()
+                        }
+                        .disabled(!hasLoadedInitialData)
                     }
-                    .disabled(!hasLoadedInitialData || vm.isSaving)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -217,6 +221,24 @@ struct BakeEditView: View {
                 }
             }
             .interactiveDismissDisabled(vm.isSaving)
+            // The inline error section can sit below the fold on a long form,
+            // so also raise an alert the moment a save fails.
+            .alert("Couldn't Save", isPresented: isShowingSaveError, presenting: vm.error) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { error in
+                Text(error)
+            }
+            .offlineBanner()
+        }
+    }
+
+    private var isShowingSaveError: Binding<Bool> {
+        Binding {
+            vm.error != nil && !vm.isSaving
+        } set: { isPresented in
+            if !isPresented {
+                vm.error = nil
+            }
         }
     }
 
