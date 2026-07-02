@@ -4,37 +4,33 @@ import PhotosUI
 struct BakeDetailView: View {
     let bakeId: String
     let initialTitle: String?
-    @State private var bake: Bake?
-    @State private var isLoading = true
+    @StateObject private var viewModel: BakeDetailViewModel
     @State private var showingEdit = false
     @State private var showingAddStep = false
-    @State private var newStepTime: Date = .now
-    @State private var newStepAction: String = ""
-    @State private var newStepNote: String = ""
-    @State private var isSavingStep = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var isUploadingPhotos = false
-    @State private var editedNotes: String = ""
-    @State private var isSavingNotes = false
-    @State private var loadError: String?
-    @State private var actionError: String?
     @FocusState private var isNewStepActionFocused: Bool
+
+    init(bakeId: String, initialTitle: String?) {
+        self.bakeId = bakeId
+        self.initialTitle = initialTitle
+        _viewModel = StateObject(wrappedValue: BakeDetailViewModel(bakeId: bakeId))
+    }
 
     private var isShowingActionError: Binding<Bool> {
         Binding {
-            actionError != nil
+            viewModel.actionError != nil
         } set: { isPresented in
             if !isPresented {
-                actionError = nil
+                viewModel.actionError = nil
             }
         }
     }
 
     var body: some View {
         Group {
-            if isLoading && bake == nil {
+            if viewModel.isLoading && viewModel.bake == nil {
                 ProgressView()
-            } else if let bake {
+            } else if let bake = viewModel.bake {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         // Photos
@@ -54,7 +50,7 @@ struct BakeDetailView: View {
                 // Keep the keyboard up while scrolling to see the notes field;
                 // dragging down onto the keyboard still dismisses it.
                 .scrollDismissesKeyboard(.interactively)
-                .alert("Something Went Wrong", isPresented: isShowingActionError, presenting: actionError) { _ in
+                .alert("Something Went Wrong", isPresented: isShowingActionError, presenting: viewModel.actionError) { _ in
                     Button("OK", role: .cancel) {}
                 } message: { error in
                     Text(error)
@@ -63,18 +59,18 @@ struct BakeDetailView: View {
                 ContentUnavailableView {
                     Label("Bake Unavailable", systemImage: "wifi.slash")
                 } description: {
-                    Text(loadError ?? "Could not load this bake.")
+                    Text(viewModel.loadError ?? "Could not load this bake.")
                 } actions: {
                     Button("Retry") {
-                        Task { await load() }
+                        Task { await viewModel.load() }
                     }
                 }
             }
         }
-        .navigationTitle(bake?.title ?? initialTitle ?? "Bake")
+        .navigationTitle(viewModel.bake?.title ?? initialTitle ?? "Bake")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            if bake != nil {
+            if viewModel.bake != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Edit") {
                         showingEdit = true
@@ -83,15 +79,15 @@ struct BakeDetailView: View {
             }
         }
         .sheet(isPresented: $showingEdit) {
-            if let bake {
+            if let bake = viewModel.bake {
                 BakeEditView(existing: bake) {
                     showingEdit = false
-                    Task { await load() }
+                    Task { await viewModel.load() }
                 }
             }
         }
         .task {
-            await load()
+            await viewModel.load()
         }
         .onChange(of: selectedPhotos) {
             Task { await uploadSelectedPhotos() }
@@ -118,9 +114,9 @@ struct BakeDetailView: View {
             ) {
                 Label("Add Photos", systemImage: "photo.on.rectangle.angled")
             }
-            .disabled(isUploadingPhotos)
+            .disabled(viewModel.isUploadingPhotos)
 
-            if isUploadingPhotos {
+            if viewModel.isUploadingPhotos {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text("Uploading photos...")
@@ -197,7 +193,7 @@ struct BakeDetailView: View {
             } else {
                 Button {
                     // Default to the last step's time so the new step lands on the right day.
-                    newStepTime = bake.schedule?.last?.date ?? .now
+                    viewModel.newStepTime = bake.schedule?.last?.date ?? .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
@@ -216,12 +212,12 @@ struct BakeDetailView: View {
     @ViewBuilder
     private func notesSection(bake: Bake) -> some View {
         let currentNotes = bake.notes ?? ""
-        let notesChanged = editedNotes != currentNotes
+        let notesChanged = viewModel.editedNotes != currentNotes
 
         SectionBlock(title: "Notes") {
             // Grows with content so the caret never scrolls out of sight
             // inside a fixed-height box.
-            TextField("Notes", text: $editedNotes, axis: .vertical)
+            TextField("Notes", text: $viewModel.editedNotes, axis: .vertical)
                 .lineLimit(4...)
                 .padding(8)
                 .overlay {
@@ -231,23 +227,23 @@ struct BakeDetailView: View {
 
             HStack {
                 Button("Reset") {
-                    editedNotes = currentNotes
+                    viewModel.editedNotes = currentNotes
                 }
                 .foregroundStyle(.secondary)
-                .disabled(!notesChanged || isSavingNotes)
+                .disabled(!notesChanged || viewModel.isSavingNotes)
 
                 Spacer()
 
                 Button {
-                    Task { await saveNotes() }
+                    Task { await viewModel.saveNotes() }
                 } label: {
-                    if isSavingNotes {
+                    if viewModel.isSavingNotes {
                         ProgressView()
                     } else {
                         Text("Save Notes").bold()
                     }
                 }
-                .disabled(!notesChanged || isSavingNotes)
+                .disabled(!notesChanged || viewModel.isSavingNotes)
             }
         }
     }
@@ -259,22 +255,22 @@ struct BakeDetailView: View {
         VStack(spacing: 10) {
             Divider()
 
-            TextField("Action", text: $newStepAction)
+            TextField("Action", text: $viewModel.newStepAction)
                 .focused($isNewStepActionFocused)
                 .textInputAutocapitalization(.sentences)
                 .textFieldStyle(.roundedBorder)
 
-            DatePicker("", selection: $newStepTime, displayedComponents: [.date, .hourAndMinute])
+            DatePicker("", selection: $viewModel.newStepTime, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            TextField("Note (optional)", text: $newStepNote)
+            TextField("Note (optional)", text: $viewModel.newStepNote)
                 .font(.caption)
                 .textFieldStyle(.roundedBorder)
 
             HStack {
                 Button("Cancel") {
-                    resetAddStep()
+                    resetAddStepPresentation()
                 }
                 .foregroundStyle(.secondary)
 
@@ -283,171 +279,37 @@ struct BakeDetailView: View {
                 Button {
                     Task { await saveNewStep() }
                 } label: {
-                    if isSavingStep {
+                    if viewModel.isSavingStep {
                         ProgressView()
                     } else {
                         Text("Add")
                             .bold()
                     }
                 }
-                .disabled(newStepAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingStep)
+                .disabled(viewModel.newStepAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isSavingStep)
             }
         }
         .padding(.top, 4)
     }
 
     private func saveNewStep() async {
-        guard let bake else { return }
-        isSavingStep = true
-        defer { isSavingStep = false }
-
-        let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAction.isEmpty else { return }
-
-        // Build schedule: existing entries + new entry
-        var schedulePayload = (bake.schedule ?? []).map {
-            ScheduleEntryPayload(occursAt: $0.occursAt, action: $0.action, note: $0.note)
-        }
-        let newEntry = ScheduleEntryPayload(
-            occursAt: Formatters.isoDateTime.string(from: newStepTime),
-            action: trimmedAction,
-            note: trimmedNote.isEmpty ? nil : trimmedNote
-        )
-        schedulePayload.append(newEntry)
-
-        let payload = buildPayload(
-            from: bake,
-            notes: bake.notes,
-            schedule: schedulePayload
-        )
-
-        do {
-            let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
-            self.bake = updated
-            editedNotes = updated.notes ?? ""
-            resetAddStep()
-        } catch {
-            actionError = error.localizedDescription
-        }
-    }
-
-    private func saveNotes() async {
-        guard let bake else { return }
-        isSavingNotes = true
-        defer { isSavingNotes = false }
-
-        let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let noteValue = trimmed.isEmpty ? nil : trimmed
-        let existingSchedule = (bake.schedule ?? []).map {
-            ScheduleEntryPayload(occursAt: $0.occursAt, action: $0.action, note: $0.note)
-        }
-
-        let payload = buildPayload(
-            from: bake,
-            notes: noteValue,
-            schedule: existingSchedule.isEmpty ? nil : existingSchedule
-        )
-
-        do {
-            let updated = try await APIClient.shared.updateBake(id: bake.id, payload)
-            self.bake = updated
-            editedNotes = updated.notes ?? ""
-        } catch {
-            actionError = error.localizedDescription
+        if await viewModel.saveNewStep() {
+            showingAddStep = false
+            isNewStepActionFocused = false
         }
     }
 
     private func uploadSelectedPhotos() async {
         guard !selectedPhotos.isEmpty else { return }
-        guard let bake else {
-            selectedPhotos.removeAll()
-            return
-        }
-
-        isUploadingPhotos = true
         let items = selectedPhotos
         selectedPhotos.removeAll()
-
-        var updatedBake = bake
-        var failureCount = 0
-        var lastError: Error?
-
-        for item in items {
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else {
-                    failureCount += 1
-                    continue
-                }
-                let photo = try await APIClient.shared.uploadPhoto(bakeId: bake.id, imageData: data)
-
-                var photos = updatedBake.photos ?? []
-                photos.append(photo)
-                updatedBake.photos = photos
-            } catch {
-                failureCount += 1
-                lastError = error
-            }
-        }
-
-        self.bake = updatedBake
-
-        if failureCount > 0 {
-            let failureText = failureCount == 1 ? "1 photo failed to upload." : "\(failureCount) photos failed to upload."
-            if let lastError {
-                actionError = "\(failureText) \(lastError.localizedDescription)"
-            } else {
-                actionError = failureText
-            }
-        }
-
-        isUploadingPhotos = false
+        await viewModel.uploadPhotos(items)
     }
 
-    private func buildPayload(from bake: Bake, notes: String?, schedule: [ScheduleEntryPayload]?) -> CreateBakePayload {
-        let ingredientsPayload = bake.ingredients?.map {
-            IngredientPayload(name: $0.name, amountValue: $0.amountValue, unit: $0.unit, note: $0.note)
-        }
-
-        return CreateBakePayload(
-            title: bake.title,
-            bakeDate: bake.bakeDate,
-
-            ingredients: ingredientsPayload,
-            notes: notes,
-            schedule: schedule
-        )
-    }
-
-    private func resetAddStep() {
+    private func resetAddStepPresentation() {
         showingAddStep = false
         isNewStepActionFocused = false
-        newStepTime = .now
-        newStepAction = ""
-        newStepNote = ""
-    }
-
-    private func load() async {
-        if bake == nil {
-            isLoading = true
-        }
-        loadError = nil
-
-        do {
-            let loaded = try await APIClient.shared.getBake(id: bakeId)
-            bake = loaded
-            editedNotes = loaded.notes ?? ""
-        } catch {
-            if bake == nil {
-                loadError = error.localizedDescription
-            } else {
-                // The full-screen error only renders with no bake loaded; a
-                // failed refresh must surface through the alert instead of
-                // silently showing stale data.
-                actionError = "Couldn't refresh. \(error.localizedDescription)"
-            }
-        }
-        isLoading = false
+        viewModel.resetAddStep()
     }
 }
 
