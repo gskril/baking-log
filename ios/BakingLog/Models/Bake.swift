@@ -94,15 +94,12 @@ struct ScheduleEntry: Identifiable, Codable, Hashable {
 struct Photo: Identifiable, Codable, Hashable {
     let id: String
     var bakeId: String
-    var r2Key: String
-    var url: String?
     var caption: String?
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, url, caption
+        case id, caption
         case bakeId = "bake_id"
-        case r2Key = "r2_key"
         case createdAt = "created_at"
     }
 }
