@@ -6,7 +6,7 @@ A minimal bread baking log — iOS app + Cloudflare Worker backend.
 
 ```
 worker/     Cloudflare Worker (Hono + D1 + R2)
-ios/        iOS app (SwiftUI) + Widget extension
+ios/        iOS app (SwiftUI)
 ```
 
 ## Integration Guide
@@ -17,7 +17,7 @@ For website and automation integrations (including developer/agent workflows), s
 
 ```bash
 cd worker
-npm install
+bun install
 
 # Create D1 database and R2 bucket
 wrangler d1 create baking-log
@@ -26,10 +26,10 @@ wrangler r2 bucket create baking-log
 # Update wrangler.toml with the database_id from the d1 create output
 
 # Apply database migrations
-npm run db:init:remote
+bun run db:migrate:remote
 
 # Deploy
-npm run deploy
+bun run deploy
 ```
 
 ### API
@@ -80,7 +80,3 @@ open BakingLog.xcodeproj
 ```
 
 In the app, go to Settings (gear icon) and set your worker URL.
-
-### Widget
-
-The widget shows your most recent bake. Add it from the iOS home screen widget picker after installing the app.
