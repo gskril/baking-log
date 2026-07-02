@@ -4,6 +4,9 @@ export interface Env {
   API_KEY?: string;
 }
 
+export const INGREDIENT_UNITS = ['g', 'tsp', 'tbsp', 'cup'] as const;
+export type IngredientUnit = (typeof INGREDIENT_UNITS)[number];
+
 export interface Bake {
   id: string;
   title: string | null;
@@ -22,7 +25,8 @@ export interface Ingredient {
   id: string;
   bake_id: string;
   name: string;
-  amount: string;
+  amount_value: number | null;
+  unit: IngredientUnit | null;
   note: string | null;
   sort_order: number;
   created_at: string;
@@ -37,7 +41,8 @@ export interface BakeWithDetails extends Bake {
 export interface ScheduleEntry {
   id: string;
   bake_id: string;
-  time: string;
+  /** Local wall-clock ISO 8601 ("YYYY-MM-DDTHH:MM:SS"), no timezone. */
+  occurs_at: string | null;
   action: string;
   note: string | null;
   sort_order: number;
@@ -64,9 +69,9 @@ export interface Webhook {
 export interface CreateBakeRequest {
   title?: string;
   bake_date: string;
-  ingredients?: { name: string; amount: string; note?: string }[];
+  ingredients?: { name: string; amount_value?: number | null; unit?: string | null; note?: string }[];
   notes?: string;
-  schedule?: { time: string; action: string; note?: string }[];
+  schedule?: { occurs_at?: string | null; action: string; note?: string }[];
 }
 
 export interface UpdateBakeRequest extends Partial<CreateBakeRequest> {}

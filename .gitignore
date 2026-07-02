@@ -24,3 +24,6 @@ ios/build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Data backups (personal data, never commit)
+backups/

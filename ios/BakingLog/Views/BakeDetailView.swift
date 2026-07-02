@@ -132,7 +132,7 @@ struct BakeDetailView: View {
                             .font(.body)
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(ingredient.amount)
+                            Text(ingredient.displayAmount)
                                 .font(.body.monospaced())
                                 .foregroundStyle(.secondary)
                             if let note = ingredient.note, !note.isEmpty {
@@ -153,9 +153,17 @@ struct BakeDetailView: View {
     private func scheduleSection(bake: Bake) -> some View {
         SectionBlock(title: "Schedule") {
             if let schedule = bake.schedule, !schedule.isEmpty {
-                ForEach(schedule) { entry in
+                let dates = schedule.map(\.date)
+                ForEach(Array(schedule.enumerated()), id: \.element.id) { index, entry in
+                    if let dayLabel = Formatters.dayLabel(in: dates, at: index) {
+                        Text(dayLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.top, index == 0 ? 0 : 6)
+                    }
                     HStack(alignment: .top, spacing: 12) {
-                        Text(entry.time)
+                        Text(Formatters.displayTime(entry.date))
                             .font(.subheadline.monospaced())
                             .foregroundStyle(.secondary)
                             .frame(width: 80, alignment: .trailing)
@@ -177,6 +185,8 @@ struct BakeDetailView: View {
                 inlineAddStepForm()
             } else {
                 Button {
+                    // Default to the last step's time so the new step lands on the right day.
+                    newStepTime = bake.schedule?.last?.date ?? .now
                     showingAddStep = true
                     DispatchQueue.main.async {
                         isNewStepActionFocused = true
@@ -236,16 +246,14 @@ struct BakeDetailView: View {
         VStack(spacing: 10) {
             Divider()
 
-            HStack {
-                DatePicker("", selection: $newStepTime, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .frame(width: 100)
+            TextField("Action", text: $newStepAction)
+                .focused($isNewStepActionFocused)
+                .textInputAutocapitalization(.sentences)
+                .textFieldStyle(.roundedBorder)
 
-                TextField("Action", text: $newStepAction)
-                    .focused($isNewStepActionFocused)
-                    .textInputAutocapitalization(.sentences)
-                    .textFieldStyle(.roundedBorder)
-            }
+            DatePicker("", selection: $newStepTime, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $newStepNote)
                 .font(.caption)
@@ -279,8 +287,6 @@ struct BakeDetailView: View {
         guard let bake else { return }
         isSavingStep = true
 
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "h:mm a"
         let trimmedAction = newStepAction.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote = newStepNote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedAction.isEmpty else {
@@ -290,10 +296,10 @@ struct BakeDetailView: View {
 
         // Build schedule: existing entries + new entry
         var schedulePayload = (bake.schedule ?? []).map {
-            ScheduleEntryPayload(time: $0.time, action: $0.action, note: $0.note)
+            ScheduleEntryPayload(occursAt: $0.occursAt, action: $0.action, note: $0.note)
         }
         let newEntry = ScheduleEntryPayload(
-            time: timeFormatter.string(from: newStepTime),
+            occursAt: Formatters.isoDateTime.string(from: newStepTime),
             action: trimmedAction,
             note: trimmedNote.isEmpty ? nil : trimmedNote
         )
@@ -315,7 +321,7 @@ struct BakeDetailView: View {
             let newScheduleEntry = ScheduleEntry(
                 id: "local-\(UUID().uuidString)",
                 bakeId: bake.id,
-                time: timeFormatter.string(from: newStepTime),
+                occursAt: Formatters.isoDateTime.string(from: newStepTime),
                 action: trimmedAction,
                 note: trimmedNote.isEmpty ? nil : trimmedNote,
                 sortOrder: (bake.schedule?.count ?? 0)
@@ -340,7 +346,7 @@ struct BakeDetailView: View {
         let trimmed = editedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         let noteValue = trimmed.isEmpty ? nil : trimmed
         let existingSchedule = (bake.schedule ?? []).map {
-            ScheduleEntryPayload(time: $0.time, action: $0.action, note: $0.note)
+            ScheduleEntryPayload(occursAt: $0.occursAt, action: $0.action, note: $0.note)
         }
 
         let payload = buildPayload(
@@ -404,7 +410,7 @@ struct BakeDetailView: View {
 
     private func buildPayload(from bake: Bake, notes: String?, schedule: [ScheduleEntryPayload]?) -> CreateBakePayload {
         let ingredientsPayload = bake.ingredients?.map {
-            IngredientPayload(name: $0.name, amount: $0.amount, note: $0.note)
+            IngredientPayload(name: $0.name, amountValue: $0.amountValue, unit: $0.unit, note: $0.note)
         }
 
         return CreateBakePayload(

@@ -164,14 +164,34 @@ struct CreateBakePayload: Codable {
 
 struct IngredientPayload: Codable {
     let name: String
-    let amount: String
+    let amountValue: Double?
+    let unit: String?
     let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, unit, note
+        case amountValue = "amount_value"
+    }
+
+    var displayAmount: String {
+        Formatters.displayAmount(value: amountValue, unit: unit)
+    }
 }
 
 struct ScheduleEntryPayload: Codable {
-    let time: String
+    /// Local wall-clock ISO 8601 ("yyyy-MM-ddTHH:mm:ss"), no timezone.
+    let occursAt: String?
     let action: String
     let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case action, note
+        case occursAt = "occurs_at"
+    }
+
+    var date: Date? {
+        occursAt.flatMap(Formatters.parseDateTime)
+    }
 }
 
 struct BakeListResponse: Codable {

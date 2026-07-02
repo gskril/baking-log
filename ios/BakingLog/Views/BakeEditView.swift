@@ -317,14 +317,12 @@ struct ScheduleEntryRow: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack {
-                DatePicker("", selection: $entry.timeDate, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .frame(width: 100)
+            TextField("Action (e.g., Mix, fold, shape)", text: $entry.action)
+                .textInputAutocapitalization(.sentences)
 
-                TextField("Action (e.g., Mix, fold, shape)", text: $entry.action)
-                    .textInputAutocapitalization(.sentences)
-            }
+            DatePicker("", selection: $entry.timeDate, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("Note (optional)", text: $entry.note)
                 .font(.caption)

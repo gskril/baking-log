@@ -50,31 +50,6 @@ class BakeEditViewModel: ObservableObject {
 
     var isEditing: Bool { existingBakeId != nil || pendingBakeId != nil }
 
-    // MARK: - Time Formatting
-
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f
-    }()
-
-    private static func parseTime(_ string: String) -> Date {
-        // Try common formats
-        let formats = ["h:mm a", "h:mma", "H:mm", "ha", "h a"]
-        for format in formats {
-            let f = DateFormatter()
-            f.dateFormat = format
-            if let date = f.date(from: string) {
-                return date
-            }
-        }
-        return .now
-    }
-
-    private static func formatTime(_ date: Date) -> String {
-        timeFormatter.string(from: date)
-    }
-
     // MARK: - Load Existing
 
     func loadExisting(_ bake: Bake) {
@@ -85,25 +60,12 @@ class BakeEditViewModel: ObservableObject {
         existingPhotos = bake.photos ?? []
         pendingExistingImages = []
         newImages = []
-        ingredientEntries = []
-        scheduleEntries = []
         error = nil
 
-        // Parse bake_date
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        bakeDate = formatter.date(from: bake.bakeDate) ?? .now
-
-        // Load structured ingredients
-        if let structured = bake.ingredients, !structured.isEmpty {
-            ingredientEntries = structured.map {
-                let parsed = Self.parseAmount($0.amount)
-                return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
-            }
-        }
-
+        bakeDate = Formatters.isoDay.date(from: bake.bakeDate) ?? .now
+        ingredientEntries = Self.editableIngredients(from: bake.ingredients)
         scheduleEntries = (bake.schedule ?? []).map {
-            EditableScheduleEntry(timeDate: Self.parseTime($0.time), action: $0.action, note: $0.note ?? "")
+            EditableScheduleEntry(timeDate: $0.date ?? .now, action: $0.action, note: $0.note ?? "")
         }
     }
 
@@ -114,25 +76,21 @@ class BakeEditViewModel: ObservableObject {
         notes = pending.payload.notes ?? ""
         existingPhotos = []
         newImages = []
-        ingredientEntries = []
-        scheduleEntries = []
         error = nil
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        bakeDate = formatter.date(from: pending.payload.bakeDate) ?? .now
+        bakeDate = Formatters.isoDay.date(from: pending.payload.bakeDate) ?? .now
 
-        if let ingredients = pending.payload.ingredients, !ingredients.isEmpty {
-            ingredientEntries = ingredients.map {
-                let parsed = Self.parseAmount($0.amount)
-                return EditableIngredient(name: $0.name, amountValue: parsed.value, unit: parsed.unit, note: $0.note ?? "")
-            }
+        ingredientEntries = (pending.payload.ingredients ?? []).map {
+            EditableIngredient(
+                name: $0.name,
+                amountValue: $0.amountValue.map(Formatters.amountString) ?? "",
+                unit: $0.unit.flatMap(IngredientUnit.init(rawValue:)) ?? .grams,
+                note: $0.note ?? ""
+            )
         }
 
-        if let schedule = pending.payload.schedule, !schedule.isEmpty {
-            scheduleEntries = schedule.map {
-                EditableScheduleEntry(timeDate: Self.parseTime($0.time), action: $0.action, note: $0.note ?? "")
-            }
+        scheduleEntries = (pending.payload.schedule ?? []).map {
+            EditableScheduleEntry(timeDate: $0.date ?? .now, action: $0.action, note: $0.note ?? "")
         }
 
         pendingExistingImages = pending.imageDataItems
@@ -152,6 +110,17 @@ class BakeEditViewModel: ObservableObject {
         bakeDate = .now
     }
 
+    private static func editableIngredients(from ingredients: [Ingredient]?) -> [EditableIngredient] {
+        (ingredients ?? []).map {
+            EditableIngredient(
+                name: $0.name,
+                amountValue: $0.amountValue.map(Formatters.amountString) ?? "",
+                unit: $0.unit.flatMap(IngredientUnit.init(rawValue:)) ?? .grams,
+                note: $0.note ?? ""
+            )
+        }
+    }
+
     // MARK: - Ingredient CRUD
 
     func addIngredient() {
@@ -169,7 +138,9 @@ class BakeEditViewModel: ObservableObject {
     // MARK: - Schedule CRUD
 
     func addScheduleEntry() {
-        scheduleEntries.append(EditableScheduleEntry(timeDate: .now, action: "", note: ""))
+        // Default to the last entry's time so consecutive steps land on the same day.
+        let defaultTime = scheduleEntries.last?.timeDate ?? .now
+        scheduleEntries.append(EditableScheduleEntry(timeDate: defaultTime, action: "", note: ""))
     }
 
     func removeScheduleEntry(at offsets: IndexSet) {
@@ -187,23 +158,28 @@ class BakeEditViewModel: ObservableObject {
         error = nil
         savedOffline = false
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-
         let schedule = scheduleEntries
             .filter { !$0.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map { ScheduleEntryPayload(time: Self.formatTime($0.timeDate), action: $0.action, note: $0.note.isEmpty ? nil : $0.note) }
+            .map {
+                ScheduleEntryPayload(
+                    occursAt: Formatters.isoDateTime.string(from: $0.timeDate),
+                    action: $0.action,
+                    note: $0.note.isEmpty ? nil : $0.note
+                )
+            }
 
         let ingredients = ingredientEntries
             .filter {
                 !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || !$0.amountValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            .map {
-                IngredientPayload(
-                    name: $0.name,
-                    amount: Self.formatAmount(value: $0.amountValue, unit: $0.unit),
-                    note: $0.note.isEmpty ? nil : $0.note
+            .map { entry in
+                let value = Double(entry.amountValue.trimmingCharacters(in: .whitespacesAndNewlines))
+                return IngredientPayload(
+                    name: entry.name,
+                    amountValue: value,
+                    unit: value == nil ? nil : entry.unit.rawValue,
+                    note: entry.note.isEmpty ? nil : entry.note
                 )
             }
 
@@ -213,7 +189,7 @@ class BakeEditViewModel: ObservableObject {
 
         let payload = CreateBakePayload(
             title: trimmedTitle.isEmpty ? nil : trimmedTitle,
-            bakeDate: formatter.string(from: bakeDate),
+            bakeDate: Formatters.isoDay.string(from: bakeDate),
 
             ingredients: ingredients.isEmpty ? nil : ingredients,
             notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
@@ -232,7 +208,7 @@ class BakeEditViewModel: ObservableObject {
                 id: "pending",
                 title: payload.title,
                 bakeDate: payload.bakeDate,
-    
+
                 ingredients: nil,
                 ingredientCount: nil,
                 notes: payload.notes,
@@ -278,7 +254,7 @@ class BakeEditViewModel: ObservableObject {
                     id: "pending",
                     title: payload.title,
                     bakeDate: payload.bakeDate,
-        
+
                     ingredients: nil,
                     ingredientCount: nil,
                     notes: payload.notes,
@@ -297,17 +273,17 @@ class BakeEditViewModel: ObservableObject {
                 isSaving = false
 
                 let ingredientModels = ingredients.enumerated().map { i, ing in
-                    Ingredient(id: "local-\(i)", bakeId: existingId, name: ing.name, amount: ing.amount, note: ing.note, sortOrder: i)
+                    Ingredient(id: "local-\(i)", bakeId: existingId, name: ing.name, amountValue: ing.amountValue, unit: ing.unit, note: ing.note, sortOrder: i)
                 }
                 let scheduleModels = schedule.enumerated().map { i, entry in
-                    ScheduleEntry(id: "local-\(i)", bakeId: existingId, time: entry.time, action: entry.action, note: entry.note, sortOrder: i)
+                    ScheduleEntry(id: "local-\(i)", bakeId: existingId, occursAt: entry.occursAt, action: entry.action, note: entry.note, sortOrder: i)
                 }
 
                 return Bake(
                     id: existingId,
                     title: payload.title,
                     bakeDate: payload.bakeDate,
-        
+
                     ingredients: ingredientModels.isEmpty ? nil : ingredientModels,
                     ingredientCount: ingredientModels.isEmpty ? nil : ingredientModels.count,
                     notes: payload.notes,
@@ -326,65 +302,5 @@ class BakeEditViewModel: ObservableObject {
     func deleteExistingPhoto(_ photo: Photo) async {
         try? await APIClient.shared.deletePhoto(id: photo.id)
         existingPhotos.removeAll { $0.id == photo.id }
-    }
-
-    // MARK: - Ingredient Amount Helpers
-
-    /// Matches a unit token (including spelled-out and plural variants) to a
-    /// known `IngredientUnit`. Returns nil for unrecognized tokens.
-    private static func ingredientUnit(from token: String) -> IngredientUnit? {
-        switch token {
-        case "g", "gram", "grams": return .grams
-        case "tsp", "teaspoon", "teaspoons": return .tsp
-        case "tbsp", "tablespoon", "tablespoons": return .tbsp
-        case "cup", "cups": return .cup
-        default: return nil
-        }
-    }
-
-    private static func parseAmount(_ rawAmount: String) -> (value: String, unit: IngredientUnit) {
-        let trimmed = rawAmount.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return ("", .grams)
-        }
-
-        let lower = trimmed.lowercased()
-
-        // Pull off a leading number. The decimal portion is optional and a
-        // leading zero is not required, so ".5", "0.5", "4" and "1.67" all match.
-        if let numberRange = lower.range(of: #"^\d*\.?\d+"#, options: .regularExpression) {
-            let number = String(lower[numberRange])
-
-            // Whatever follows the number is the unit. Take the first token so
-            // attached units ("90g"), spaced units ("4 cup") and even already
-            // corrupted values (".5 cup g") all resolve to a single unit.
-            let unitToken = lower[numberRange.upperBound...]
-                .split(whereSeparator: \.isWhitespace)
-                .first
-                .map(String.init) ?? ""
-
-            if unitToken.isEmpty {
-                return (number, .grams)
-            }
-            if let unit = ingredientUnit(from: unitToken) {
-                return (number, unit)
-            }
-        }
-
-        // Unknown format: preserve the original text. formatAmount will not
-        // append a unit to it, so it round-trips unchanged.
-        return (trimmed, .grams)
-    }
-
-    private static func formatAmount(value rawValue: String, unit: IngredientUnit) -> String {
-        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return "" }
-        // Only append the unit to a bare number. If the value already contains
-        // non-numeric text (an amount we couldn't fully parse), leave it as-is
-        // so we never produce strings like ".5 cup g".
-        guard value.range(of: #"^\d*\.?\d+$"#, options: .regularExpression) != nil else {
-            return value
-        }
-        return "\(value) \(unit.rawValue)"
     }
 }

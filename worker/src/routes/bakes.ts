@@ -1,14 +1,55 @@
 import { Hono } from 'hono';
-import { Env, Bake, BakeListItem, BakeWithDetails, ScheduleEntry, Ingredient, Photo, CreateBakeRequest, UpdateBakeRequest } from '../types';
-import { normalizeIngredientRows } from '../utils/ingredientAmount';
-import { normalizeScheduleTime } from '../utils/scheduleTime';
+import { Env, BakeListItem, CreateBakeRequest, UpdateBakeRequest, Photo } from '../types';
+import { getBakeWithDetails } from '../db/queries';
+import { validateBakeRequest } from '../utils/validate';
 
 const app = new Hono<{ Bindings: Env }>();
 
+/** Store occurs_at uniformly with seconds ("YYYY-MM-DDTHH:MM:SS"). */
+function withSeconds(occursAt: string | null | undefined): string | null {
+  if (!occursAt) return null;
+  return occursAt.length === 16 ? `${occursAt}:00` : occursAt;
+}
+
+async function replaceScheduleAndIngredients(
+  db: D1Database,
+  bakeId: string,
+  schedule: CreateBakeRequest['schedule'],
+  ingredients: CreateBakeRequest['ingredients']
+) {
+  if (schedule) {
+    await db.prepare('DELETE FROM schedule_entries WHERE bake_id = ?').bind(bakeId).run();
+    if (schedule.length) {
+      const stmt = db.prepare(
+        'INSERT INTO schedule_entries (id, bake_id, occurs_at, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+      await db.batch(
+        schedule.map((entry, i) =>
+          stmt.bind(crypto.randomUUID(), bakeId, withSeconds(entry.occurs_at), entry.action, entry.note ?? null, i)
+        )
+      );
+    }
+  }
+
+  if (ingredients) {
+    await db.prepare('DELETE FROM ingredients WHERE bake_id = ?').bind(bakeId).run();
+    if (ingredients.length) {
+      const stmt = db.prepare(
+        'INSERT INTO ingredients (id, bake_id, name, amount_value, unit, note, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      await db.batch(
+        ingredients.map((ing, i) =>
+          stmt.bind(crypto.randomUUID(), bakeId, ing.name, ing.amount_value ?? null, ing.unit ?? null, ing.note ?? null, i)
+        )
+      );
+    }
+  }
+}
+
 // List all bakes
 app.get('/', async (c) => {
-  const limit = Number(c.req.query('limit') ?? 50);
-  const offset = Number(c.req.query('offset') ?? 0);
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 50, 1), 200);
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
 
   const bakes = await c.env.DB.prepare(
     `SELECT b.id, b.title, b.bake_date, b.notes,
@@ -26,52 +67,17 @@ app.get('/', async (c) => {
 
 // Get single bake with schedule, ingredients, and photos
 app.get('/:id', async (c) => {
-  const id = c.req.param('id');
-
-  const bake = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes WHERE id = ?'
-  )
-    .bind(id)
-    .first<Bake>();
-
-  if (!bake) return c.json({ error: 'Not found' }, 404);
-
-  const [schedule, ingredients, photos] = await Promise.all([
-    c.env.DB.prepare(
-      'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<ScheduleEntry>(),
-    c.env.DB.prepare(
-      'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<Ingredient>(),
-    c.env.DB.prepare(
-      'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
-    )
-      .bind(id)
-      .all<Photo>(),
-  ]);
-
-  const photosWithUrls = (photos.results ?? []).map((p) => ({
-    ...p,
-    url: `/api/photos/${p.id}/image`,
-  }));
-
-  const result: BakeWithDetails = {
-    ...bake,
-    ingredients: normalizeIngredientRows(ingredients.results ?? []),
-    schedule: schedule.results ?? [],
-    photos: photosWithUrls,
-  };
-
+  const result = await getBakeWithDetails(c.env.DB, c.req.param('id'));
+  if (!result) return c.json({ error: 'Not found' }, 404);
   return c.json(result);
 });
 
 // Create a new bake
 app.post('/', async (c) => {
   const body = await c.req.json<CreateBakeRequest>();
+  const invalid = validateBakeRequest(body, true);
+  if (invalid) return c.json({ error: invalid }, 400);
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -81,62 +87,9 @@ app.post('/', async (c) => {
     .bind(id, body.title ?? null, body.bake_date, body.notes ?? null, now, now)
     .run();
 
-  if (body.schedule?.length) {
-    const stmt = c.env.DB.prepare(
-      'INSERT INTO schedule_entries (id, bake_id, time, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    const batch = body.schedule.map((entry, i) =>
-      stmt.bind(crypto.randomUUID(), id, normalizeScheduleTime(entry.time), entry.action, entry.note ?? null, i)
-    );
-    await c.env.DB.batch(batch);
-  }
+  await replaceScheduleAndIngredients(c.env.DB, id, body.schedule, body.ingredients);
 
-  if (body.ingredients?.length) {
-    const stmt = c.env.DB.prepare(
-      'INSERT INTO ingredients (id, bake_id, name, amount, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    const batch = body.ingredients.map((ing, i) =>
-      stmt.bind(crypto.randomUUID(), id, ing.name, ing.amount, ing.note ?? null, i)
-    );
-    await c.env.DB.batch(batch);
-  }
-
-  const bake = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes WHERE id = ?'
-  )
-    .bind(id)
-    .first<Bake>();
-
-  const [scheduleRows, ingredientRows, photoRows] = await Promise.all([
-    c.env.DB.prepare(
-      'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<ScheduleEntry>(),
-    c.env.DB.prepare(
-      'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<Ingredient>(),
-    c.env.DB.prepare(
-      'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
-    )
-      .bind(id)
-      .all<Photo>(),
-  ]);
-
-  const photosWithUrls = (photoRows.results ?? []).map((p) => ({
-    ...p,
-    url: `/api/photos/${p.id}/image`,
-  }));
-
-  const result: BakeWithDetails = {
-    ...bake!,
-    ingredients: normalizeIngredientRows(ingredientRows.results ?? []),
-    schedule: scheduleRows.results ?? [],
-    photos: photosWithUrls,
-  };
-
+  const result = await getBakeWithDetails(c.env.DB, id);
   return c.json(result, 201);
 });
 
@@ -144,14 +97,14 @@ app.post('/', async (c) => {
 app.put('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<UpdateBakeRequest>();
+  const invalid = validateBakeRequest(body, false);
+  if (invalid) return c.json({ error: invalid }, 400);
 
   const existing = await c.env.DB.prepare('SELECT * FROM bakes WHERE id = ?')
     .bind(id)
     .first<{ id: string; title: string; bake_date: string; notes: string | null }>();
 
   if (!existing) return c.json({ error: 'Not found' }, 404);
-
-  const now = new Date().toISOString();
 
   await c.env.DB.prepare(
     'UPDATE bakes SET title = ?, bake_date = ?, notes = ?, updated_at = ? WHERE id = ?'
@@ -160,79 +113,14 @@ app.put('/:id', async (c) => {
       body.title ?? existing.title,
       body.bake_date ?? existing.bake_date,
       body.notes ?? existing.notes,
-      now,
+      new Date().toISOString(),
       id
     )
     .run();
 
-  if (body.schedule) {
-    await c.env.DB.prepare('DELETE FROM schedule_entries WHERE bake_id = ?')
-      .bind(id)
-      .run();
+  await replaceScheduleAndIngredients(c.env.DB, id, body.schedule, body.ingredients);
 
-    if (body.schedule.length) {
-      const stmt = c.env.DB.prepare(
-        'INSERT INTO schedule_entries (id, bake_id, time, action, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-      );
-      const batch = body.schedule.map((entry, i) =>
-        stmt.bind(crypto.randomUUID(), id, normalizeScheduleTime(entry.time), entry.action, entry.note ?? null, i)
-      );
-      await c.env.DB.batch(batch);
-    }
-  }
-
-  if (body.ingredients) {
-    await c.env.DB.prepare('DELETE FROM ingredients WHERE bake_id = ?')
-      .bind(id)
-      .run();
-
-    if (body.ingredients.length) {
-      const stmt = c.env.DB.prepare(
-        'INSERT INTO ingredients (id, bake_id, name, amount, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-      );
-      const batch = body.ingredients.map((ing, i) =>
-        stmt.bind(crypto.randomUUID(), id, ing.name, ing.amount, ing.note ?? null, i)
-      );
-      await c.env.DB.batch(batch);
-    }
-  }
-
-  const updated = await c.env.DB.prepare(
-    'SELECT id, title, bake_date, notes, created_at, updated_at FROM bakes WHERE id = ?'
-  )
-    .bind(id)
-    .first<Bake>();
-
-  const [schedule, ingredients, photos] = await Promise.all([
-    c.env.DB.prepare(
-      'SELECT * FROM schedule_entries WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<ScheduleEntry>(),
-    c.env.DB.prepare(
-      'SELECT * FROM ingredients WHERE bake_id = ? ORDER BY sort_order ASC'
-    )
-      .bind(id)
-      .all<Ingredient>(),
-    c.env.DB.prepare(
-      'SELECT * FROM photos WHERE bake_id = ? ORDER BY created_at ASC'
-    )
-      .bind(id)
-      .all<Photo>(),
-  ]);
-
-  const photosWithUrls = (photos.results ?? []).map((p) => ({
-    ...p,
-    url: `/api/photos/${p.id}/image`,
-  }));
-
-  const result: BakeWithDetails = {
-    ...updated!,
-    ingredients: normalizeIngredientRows(ingredients.results ?? []),
-    schedule: schedule.results ?? [],
-    photos: photosWithUrls,
-  };
-
+  const result = await getBakeWithDetails(c.env.DB, id);
   return c.json(result);
 });
 
