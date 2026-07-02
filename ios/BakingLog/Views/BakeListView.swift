@@ -5,6 +5,16 @@ struct BakeListView: View {
     @ObservedObject private var network = NetworkMonitor.shared
     @State private var showingNewBake = false
 
+    private var isShowingError: Binding<Bool> {
+        Binding {
+            vm.error != nil && !vm.bakes.isEmpty
+        } set: { isPresented in
+            if !isPresented {
+                vm.error = nil
+            }
+        }
+    }
+
     var body: some View {
         Group {
             if vm.isLoading && vm.bakes.isEmpty {
@@ -85,6 +95,11 @@ struct BakeListView: View {
         }
         .refreshable {
             await vm.load()
+        }
+        .alert("Something Went Wrong", isPresented: isShowingError, presenting: vm.error) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { error in
+            Text(error)
         }
         .task {
             await vm.load()
