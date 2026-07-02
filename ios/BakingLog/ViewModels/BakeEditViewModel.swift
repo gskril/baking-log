@@ -206,7 +206,11 @@ class BakeEditViewModel: ObservableObject {
     }
 
     func deleteExistingPhoto(_ photo: Photo) async {
-        try? await APIClient.shared.deletePhoto(id: photo.id)
-        existingPhotos.removeAll { $0.id == photo.id }
+        do {
+            try await APIClient.shared.deletePhoto(id: photo.id)
+            existingPhotos.removeAll { $0.id == photo.id }
+        } catch {
+            self.error = "Couldn't delete photo. \(error.localizedDescription)"
+        }
     }
 }

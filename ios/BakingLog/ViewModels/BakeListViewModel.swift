@@ -23,8 +23,17 @@ class BakeListViewModel: ObservableObject {
     func delete(at offsets: IndexSet) async {
         let ids = offsets.map { bakes[$0].id }
         bakes.remove(atOffsets: offsets)
+        var deleteError: String?
         for id in ids {
-            try? await APIClient.shared.deleteBake(id: id)
+            do {
+                try await APIClient.shared.deleteBake(id: id)
+            } catch {
+                deleteError = "Couldn't delete bake. \(error.localizedDescription)"
+            }
+        }
+        if let deleteError {
+            await load()
+            self.error = deleteError
         }
     }
 

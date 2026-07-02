@@ -30,8 +30,17 @@ class WebhookSettingsViewModel: ObservableObject {
     func delete(at offsets: IndexSet) async {
         let ids = offsets.map { webhooks[$0].id }
         webhooks.remove(atOffsets: offsets)
+        var deleteError: String?
         for id in ids {
-            try? await APIClient.shared.deleteWebhook(id: id)
+            do {
+                try await APIClient.shared.deleteWebhook(id: id)
+            } catch {
+                deleteError = "Couldn't delete webhook. \(error.localizedDescription)"
+            }
+        }
+        if let deleteError {
+            await load()
+            self.error = deleteError
         }
     }
 }

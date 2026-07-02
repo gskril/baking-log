@@ -222,8 +222,8 @@ struct BakeEditView: View {
             }
             .interactiveDismissDisabled(vm.isSaving)
             // The inline error section can sit below the fold on a long form,
-            // so also raise an alert the moment a save fails.
-            .alert("Couldn't Save", isPresented: isShowingSaveError, presenting: vm.error) { _ in
+            // so also raise an alert the moment an action fails.
+            .alert("Something Went Wrong", isPresented: isShowingError, presenting: vm.error) { _ in
                 Button("OK", role: .cancel) {}
             } message: { error in
                 Text(error)
@@ -232,7 +232,7 @@ struct BakeEditView: View {
         }
     }
 
-    private var isShowingSaveError: Binding<Bool> {
+    private var isShowingError: Binding<Bool> {
         Binding {
             vm.error != nil && !vm.isSaving
         } set: { isPresented in
