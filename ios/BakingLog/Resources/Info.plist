@@ -20,6 +20,8 @@
 	<dict/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Add photos of your bakes to your baking log</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Baking timers ring as alarms so you never miss a fold or a bake</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

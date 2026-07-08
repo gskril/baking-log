@@ -10,6 +10,9 @@ struct BakingLogApp: App {
                 try? FileManager.default.removeItem(at: docs.appendingPathComponent(name))
             }
         }
+
+        // Set the notification-center delegate before any notification can fire.
+        ReminderManager.shared.start()
     }
 
     var body: some Scene {

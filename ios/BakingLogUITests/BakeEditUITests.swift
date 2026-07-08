@@ -105,6 +105,30 @@ final class BakeEditUITests: XCTestCase {
         XCTAssertEqual(actionField.value as? String, "Fold", "Typing did not land in the new step's Action field")
     }
 
+    // The reminder presets live under Add Step in the schedule section. Assert
+    // the row and a preset are present. Deliberately does NOT tap a preset —
+    // that raises the system notification-permission dialog, which would poison
+    // the rest of the suite.
+    @MainActor
+    func testReminderPresetsAppearInScheduleSection() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestHost"]
+        app.launch()
+
+        let addStep = app.buttons["Add Step"]
+        XCTAssertTrue(addStep.waitForExistence(timeout: 10), "Edit sheet did not appear")
+
+        // The row sits just below Add Step; scroll it into view if needed.
+        let presetRow = app.descendants(matching: .any)["reminderPresetRow"]
+        let preset30 = app.buttons["reminderPreset30"]
+        if !preset30.waitForExistence(timeout: 5) {
+            app.swipeUp()
+        }
+
+        XCTAssertTrue(presetRow.waitForExistence(timeout: 5), "Reminder preset row not found")
+        XCTAssertTrue(preset30.waitForExistence(timeout: 5), "30m reminder preset not found")
+    }
+
     /// Waits out both KeyboardReveal passes (0.45s / 0.9s — see
     /// KeyboardReveal.passDelays in the app target) plus the scroll animation.
     /// Bump this if those delays grow.

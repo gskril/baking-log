@@ -188,6 +188,9 @@ struct BakeEditView: View {
             } label: {
                 Label("Add Step", systemImage: "plus.circle")
             }
+
+            // ReminderManager trims and nil-checks the title, so pass it raw.
+            ReminderTimerRow(bakeTitle: { vm.title })
         } header: {
             Text("Schedule")
         }

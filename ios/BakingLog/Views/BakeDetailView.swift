@@ -215,6 +215,10 @@ struct BakeDetailView: View {
                 }
                 .padding(.top, 4)
             }
+
+            // ReminderManager trims and nil-checks the title, so pass it raw.
+            ReminderTimerRow(bakeTitle: { bake.title })
+                .padding(.top, 4)
         }
     }
 
