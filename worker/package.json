@@ -10,12 +10,12 @@
     "db:migrate:create": "wrangler d1 migrations create baking-log"
   },
   "dependencies": {
-    "hono": "4.13.2",
+    "hono": "4.13.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
-    "wrangler": "^4.0.0",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "wrangler": "^4.125.0",
     "typescript": "^5.7.0"
   }
 }
