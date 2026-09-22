@@ -10,7 +10,7 @@
     "db:migrate:create": "wrangler d1 migrations create baking-log"
   },
   "dependencies": {
-    "hono": "4.13.5",
+    "hono": "4.13.8",
     "zod": "4.5.1"
   },
   "devDependencies": {
